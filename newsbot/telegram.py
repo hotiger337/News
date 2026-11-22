@@ -15,7 +15,8 @@ import requests
 from .bot import LABELS, poll, translation_step
 from .core import KST, render
 from .delivery import deliver
-from .sources import required
+from .reports import activity, scorecard, source_report
+from .sources import enabled, required
 
 
 class BotAPIError(Exception):
@@ -39,7 +40,11 @@ class API:
         except (requests.RequestException, ValueError):
             raise BotAPIError("connection") from None
         if not result.get("ok"):
-            raise BotAPIError(result.get("error_code", r.status_code))
+            exc = BotAPIError(result.get("error_code", r.status_code))
+            exc.unchanged = (
+                "message is not modified" in result.get("description", "").lower()
+            )
+            raise exc
         return result["result"]
 
 
@@ -80,6 +85,7 @@ def identify():
 class Telegram:
     def __init__(self, store):
         self.store = store
+        self.message_lock = asyncio.Lock()
         self.api = API(required("TELEGRAM_BOT_TOKEN"))
         self.owner = int(required("TELEGRAM_OWNER_ID"))
         self.breaking = int(os.getenv("TELEGRAM_BREAKING_CHAT_ID") or self.owner)
@@ -91,24 +97,73 @@ class Telegram:
     async def call(self, method, **kwargs):
         return await asyncio.to_thread(self.api.call, method, **kwargs)
 
-    async def send(self, channel, n, body):
+    def article_payload(self, n, body):
         keys = [
             {"text": label, "callback_data": f"news:{n}:{act}"}
             for act, label in LABELS.items()
         ]
-        msg = await self.call(
-            "sendMessage",
-            chat_id=channel,
-            text=body.replace("\n<https://", "\nhttps://")
-            .replace("\n<http://", "\nhttp://")
-            .replace(">\n", "\n")
-            .removesuffix(">"),
+        # Include a stable number so a closed rating can be reopened.
+        head, sep, tail = body.partition("\n")
+        text = f"{head} · #{n}{sep}{tail}"
+        text = re.sub(r"(?m)^<(https?://[^<>\n]+)>$", r"\1", text)
+        return dict(
+            text=text,
             reply_markup={"inline_keyboard": [keys[:2], keys[2:]]},
             link_preview_options={"is_disabled": True},
         )
+
+    async def send(self, channel, n, body):
+        msg = await self.call(
+            "sendMessage", chat_id=channel, **self.article_payload(n, body)
+        )
         return msg["message_id"]
 
+    async def edit_step(self):
+        async with self.message_lock:
+            await self.edit_one()
+
+    async def edit_one(self):
+        db = self.store.db
+        row = db.execute(
+            """select i.*,e.version from source_edits e join items i on i.id=e.item
+                          where i.state='sent' and e.due<=? order by e.item limit 1""",
+            (int(time.time()),),
+        ).fetchone()
+        if not row:
+            return
+        n = row["id"]
+        payload = self.article_payload(n, render(self.store, row))
+        if db.execute(
+            "select 1 from hidden_ratings where chat=? and message=?",
+            (row["channel"], row["message"]),
+        ).fetchone():
+            payload["reply_markup"] = {"inline_keyboard": []}
+        try:
+            await self.call(
+                "editMessageText",
+                chat_id=int(row["channel"]),
+                message_id=int(row["message"]),
+                **payload,
+            )
+        except BotAPIError as exc:
+            if not getattr(exc, "unchanged", False):
+                with db:
+                    db.execute(
+                        "update source_edits set due=? where item=?",
+                        (int(time.time()) + 900, n),
+                    )
+                return
+        with db:
+            db.execute(
+                "delete from source_edits where item=? and version=?",
+                (n, row["version"]),
+            )
+
     async def update(self, u):
+        async with self.message_lock:
+            await self.handle_update(u)
+
+    async def handle_update(self, u):
         callback = u.get("callback_query")
         if callback:
             response = "등록 사용자 전용입니다."
@@ -118,6 +173,20 @@ class Telegram:
                 )
                 if m and self.store.item(int(m[1])):
                     self.store.vote(self.owner, int(m[1]), m[2])
+                    msg = callback.get("message")
+                    if msg:
+                        chat, mid = msg["chat"]["id"], msg["message_id"]
+                        with self.store.db:
+                            self.store.db.execute(
+                                "insert or replace into hidden_ratings values(?,?,?)",
+                                (str(chat), str(mid), int(m[1])),
+                            )
+                        await self.call(
+                            "editMessageReplyMarkup",
+                            chat_id=chat,
+                            message_id=mid,
+                            reply_markup={"inline_keyboard": []},
+                        )
                     response = (
                         (
                             "묶음 선호를 기록했습니다. 전체 수신 중에는 계속 즉시 발송합니다."
@@ -141,17 +210,48 @@ class Telegram:
         arg = arg.strip()
         db = self.store.db
         if cmd in ("/start", "/help"):
-            reply = "/status 상태 · /recent 최근 속보 · /interests 관심사 · /add 이름 · /remove 이름 · /held 보류 후보 · /held 번호 평가 · /retry 번호 응답 유실 건 재발송"
+            reply = "/status 상태 · /scores 평가 성적표 · /sources 출처 실적 · /rate 번호 평가 다시 열기 · /recent 최근 속보 · /interests 관심사 · /add 이름 · /remove 이름 · /held 보류 후보 · /held 번호 평가 · /retry 번호 응답 유실 건 재발송"
+        elif cmd == "/scores":
+            reply = scorecard(db, self.owner)
+        elif cmd == "/sources":
+            reply = source_report(db, self.owner, int(time.time()))
+        elif cmd == "/rate" and arg.isdecimal() and len(arg) < 15:
+            n = int(arg)
+            row = db.execute(
+                "select * from hidden_ratings where item=? order by rowid desc limit 1",
+                (n,),
+            ).fetchone()
+            if row:
+                await self.call(
+                    "editMessageReplyMarkup",
+                    chat_id=int(row["chat"]),
+                    message_id=int(row["message"]),
+                    reply_markup=self.article_payload(n, "")["reply_markup"],
+                )
+                with db:
+                    db.execute(
+                        "delete from hidden_ratings where chat=? and message=?",
+                        (row["chat"], row["message"]),
+                    )
+                reply = "평가 버튼을 다시 열었습니다."
+            else:
+                reply = "닫힌 평가가 없습니다."
         elif cmd == "/status":
             lines = [
                 "전체 수신 · 중복 정리"
                 if self.store.cfg["settings"].get("collect_all")
                 else "추천 수신"
             ]
+            lines += activity(db, int(time.time()))
             for src in self.store.cfg["sources"]:
                 r = db.execute(
                     "select * from sources where id=?", (src["id"],)
                 ).fetchone()
+                if not enabled(src):
+                    lines.append(
+                        f"{src['id']} · 꺼짐 · {src.get('verification', '설정 필요')}"
+                    )
+                    continue
                 stamp = (
                     datetime.fromtimestamp(r["success"], KST).strftime("%m-%d %H:%M")
                     if r and r["success"]
@@ -268,6 +368,7 @@ class Telegram:
 
     async def run(self):
         self.store.cfg["settings"].setdefault("collect_all", True)
+        self.store.recover_representatives(int(time.time()))
         with self.store.db:
             self.store.db.execute(
                 "update items set state='uncertain' where state='sending'"
@@ -297,11 +398,12 @@ class Telegram:
         await asyncio.gather(
             repeat(1, self.updates),
             repeat(1, self.send_step),
+            repeat(2, self.edit_step),
             repeat(1, translation_step, self.store),
             repeat(15, digest),
             *(
                 repeat(self.store.cfg["settings"]["poll_seconds"], poll, self.store, s)
                 for s in self.store.cfg["sources"]
-                if s.get("enabled", True)
+                if enabled(s)
             ),
         )

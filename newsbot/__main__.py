@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 
 from .bot import NewsBot
 from .core import Store, breaking
-from .sources import ADAPTERS, error_label, required
+from .sources import ADAPTERS, enabled, error_label, required
 
 
 def main():
@@ -20,7 +20,8 @@ def main():
     load_dotenv(".env")
     p = argparse.ArgumentParser()
     p.add_argument(
-        "command", choices=["run", "probe", "backup", "compare", "telegram-id"]
+        "command",
+        choices=["run", "run-telegram", "probe", "backup", "compare", "telegram-id"],
     )
     p.add_argument("argument", nargs="?")
     args = p.parse_args()
@@ -35,8 +36,7 @@ def main():
         selected = [
             s
             for s in cfg["sources"]
-            if s["id"] == args.argument
-            or (not args.argument and s.get("enabled", True))
+            if s["id"] == args.argument or (not args.argument and enabled(s))
         ]
         if not selected:
             p.error("출처 ID를 확인하세요")
@@ -65,7 +65,7 @@ def main():
         return
     dbpath.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     lock = open(str(dbpath) + ".lock", "a")
-    if args.command == "run":
+    if args.command in ("run", "run-telegram"):
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     store = Store(dbpath, cfg)
     if args.command == "compare":
@@ -83,7 +83,7 @@ def main():
                 json.dumps(dict(id=row["id"], old=a[:2], new=b[:2]), ensure_ascii=False)
             )
         return
-    if os.getenv("TELEGRAM_BOT_TOKEN"):
+    if args.command == "run-telegram" or os.getenv("TELEGRAM_BOT_TOKEN"):
         from .telegram import Telegram
 
         asyncio.run(Telegram(store).run())

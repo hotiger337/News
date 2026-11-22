@@ -25,6 +25,15 @@ def url_key(url):
     return urlunsplit((p.scheme.lower(), p.netloc.lower(), p.path, urlencode(args), ""))
 
 
+def amount_changed(first, second):
+    pattern = (
+        r"[-+]?\d+(?:[.,]\d+)*(?:\s*(?:억원|조원|원|달러|million|billion|trillion|%))?"
+    )
+    before = re.findall(pattern, first, re.I)
+    after = re.findall(pattern, second, re.I)
+    return bool(before and after and before != after)
+
+
 def story_keys(item):
     # Remove editorial wrapping, keep amounts, signs, names and word order.
     title = re.sub(
@@ -115,6 +124,11 @@ CREATE TABLE IF NOT EXISTS identities(publisher TEXT,k TEXT,current INTEGER,PRIM
 CREATE TABLE IF NOT EXISTS story_keys(k TEXT, item INTEGER, PRIMARY KEY(k,item));
 CREATE TABLE IF NOT EXISTS observations(source TEXT,uid TEXT,version TEXT,PRIMARY KEY(source,uid));
 CREATE TABLE IF NOT EXISTS evidence(url TEXT,item INTEGER,PRIMARY KEY(url,item));
+CREATE TABLE IF NOT EXISTS hidden_ratings(chat TEXT,message TEXT,item INTEGER,PRIMARY KEY(chat,message));
+CREATE TABLE IF NOT EXISTS source_edits(item INTEGER PRIMARY KEY,version INTEGER DEFAULT 1,due INTEGER DEFAULT 0);
+CREATE TABLE IF NOT EXISTS predictions(item INTEGER PRIMARY KEY,score REAL,trial REAL,threshold REAL,trial_weights TEXT);
+CREATE INDEX IF NOT EXISTS related_items ON items(related,state);
+CREATE INDEX IF NOT EXISTS recent_items ON items(found);
 CREATE TABLE IF NOT EXISTS votes(owner TEXT,item INTEGER,content INTEGER DEFAULT 0,batch INTEGER DEFAULT 0,PRIMARY KEY(owner,item));
 CREATE TABLE IF NOT EXISTS interests(name TEXT PRIMARY KEY);
 CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY,v TEXT);
@@ -216,7 +230,11 @@ class Store:
                 and not distinct_post
                 and (
                     old_title == item.title
-                    or (prev["source"] != s["id"] and not update)
+                    or (
+                        prev["source"] != s["id"]
+                        and not update
+                        and not amount_changed(old_title, item.title)
+                    )
                 )
             )
             if same and (not urgent or prev["urgent"] or prev["state"] == "baseline"):
@@ -254,7 +272,7 @@ class Store:
             match = self.db.execute(
                 """select i.* from story_keys k join items i on i.id=k.item
                   where k.k=? and i.found>=? and i.state in ('sent','ready','sending','translate','uncertain','retry')
-                  order by i.id limit 1""",
+                  order by i.id desc limit 1""",
                 (key, now - 86400),
             ).fetchone()
             if not match or prev:
@@ -266,6 +284,7 @@ class Store:
                     item.title,
                     re.I,
                 )
+                or amount_changed(first["title"], item.title)
                 or re.findall(r"[-+]?\d+(?:[.,]\d+)*", first["title"])
                 != re.findall(r"[-+]?\d+(?:[.,]\d+)*", item.title)
             ):
@@ -274,16 +293,20 @@ class Store:
                 continue
             representative = match
             break
+        replaced = None
         if (
             representative
-            and urgent
-            and not representative["urgent"]
-            and representative["state"] in ("ready", "retry")
-        ):
-            self.db.execute(
-                "update items set state='superseded' where id=?",
-                (representative["id"],),
+            and state != "translate"
+            and (
+                representative["state"] == "translate"
+                or (
+                    urgent
+                    and not representative["urgent"]
+                    and representative["state"] in ("ready", "retry")
+                )
             )
+        ):
+            replaced = representative["id"]
             representative = None
         if representative:
             state = "duplicate"
@@ -306,14 +329,36 @@ class Store:
                 state,
             ),
         ).lastrowid
+        if replaced:
+            self.db.execute(
+                "update items set related=null where id=? and related=?", (n, replaced)
+            )
+            self.replace_representative(replaced, n)
+        if representative:
+            self.queue_source_edit(representative["id"])
         if keys_for_story:
             target = representative["id"] if representative else n
             self.db.executemany(
                 "insert or ignore into story_keys values(?,?)",
                 [(k, target) for k in keys_for_story],
             )
-        if collect_all and not baseline and not urgent:
+        if collect_all and not baseline:
             score, parts, _ = self.score(self.item(n), now)
+            trial_weights = dict(
+                self.cfg["weights"],
+                **self.cfg.get("trial_weights", {"company_kind": 4, "company": 0.5}),
+            )
+            trial, _, _ = self.score(self.item(n), now, trial_weights)
+            self.db.execute(
+                "insert into predictions values(?,?,?,?,?)",
+                (
+                    n,
+                    score,
+                    trial,
+                    self.cfg["settings"]["instant_threshold"],
+                    json.dumps(trial_weights, sort_keys=True),
+                ),
+            )
             self.log_score(
                 "intake",
                 self.item(n),
@@ -337,6 +382,45 @@ class Store:
             )
         if state == "candidate":
             self.evaluate(self.item(n), now, "intake", True)
+
+    def queue_source_edit(self, n):
+        self.db.execute(
+            """insert into source_edits(item) values(?) on conflict(item) do update
+                           set version=version+1,due=0""",
+            (n,),
+        )
+
+    def replace_representative(self, old, new):
+        self.db.execute(
+            "update items set state='duplicate',related=? where id=?", (new, old)
+        )
+        self.db.execute(
+            "update items set related=? where related=? and state='duplicate' and id<>?",
+            (new, old, new),
+        )
+        self.db.execute(
+            "insert or ignore into story_keys select k,? from story_keys where item=?",
+            (new, old),
+        )
+        self.db.execute("delete from story_keys where item=?", (old,))
+        self.db.execute("delete from source_edits where item=?", (old,))
+        self.queue_source_edit(new)
+
+    def recover_representatives(self, now):
+        # Recover unsent Korean copies suppressed by an older release.
+        with self.db:
+            pairs = self.db.execute(
+                """select d.id,p.id from items d join items p on p.id=d.related
+                where d.state='duplicate' and p.state='translate' and d.found>=?
+                and json_extract(d.data,'$.lang')='ko' order by d.urgent desc,d.id""",
+                (now - 86400,),
+            ).fetchall()
+            for new, old in pairs:
+                if self.item(old)["state"] == "translate":
+                    self.db.execute(
+                        "update items set state='ready',related=null where id=?", (new,)
+                    )
+                    self.replace_representative(old, new)
 
     def bind(self, pub, keys, n):
         self.db.executemany(
@@ -364,10 +448,10 @@ class Store:
                 (str(owner), n, val),
             )
 
-    def score(self, row, now):
+    def score(self, row, now, weights=None):
         f = json.loads(row["features"])
         data = json.loads(row["data"])
-        weights = self.cfg["weights"]
+        weights = self.cfg["weights"] if weights is None else weights
         counts = {(k, v): [0, 0] for k, vs in f.items() for v in vs}
         batch = False
         for vote in self.db.execute(
@@ -505,8 +589,10 @@ def render(store, r):
             else "%Y-%m-%d %H:%M · 한국시간"
         )
     )
-    if d["role"] or d["origin"]:
-        lines.append(" · ".join(filter(None, [d["role"], d["origin"]])))
+    kinds = json.loads(r["features"])["kind"]
+    lines.append(
+        " · ".join(dict.fromkeys(v for v in [*kinds, d["role"], d["origin"]] if v))
+    )
 
     def reference(old):
         guild = os.getenv("DISCORD_GUILD_ID")
@@ -531,6 +617,26 @@ def render(store, r):
     links = list(
         dict.fromkeys(u for u in [d["post"], *d["links"], d.get("evidence")] if u)
     )
+    duplicates = store.db.execute(
+        """select publisher,data from items where related=? and state='duplicate'
+                                   order by id""",
+        (r["id"],),
+    )
+    cited = set()
+    for duplicate in duplicates:
+        pub = duplicate["publisher"]
+        if pub in cited or pub == r["publisher"]:
+            continue
+        cited.add(pub)
+        extra = json.loads(duplicate["data"])
+        more = next(
+            (v for v in [extra.get("post"), *extra["links"]] if v and v not in links),
+            None,
+        )
+        if more and sum(map(len, links)) + len(more) < 950:
+            links.append(more)
+    if cited:
+        lines.append("함께 보도 · " + ", ".join(sorted(cited))[:200])
     footer = "".join("\n<" + u + ">" for u in links)
     room = 1998 - len(footer)
     if room < 200:

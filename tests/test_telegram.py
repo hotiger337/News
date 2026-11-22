@@ -18,7 +18,7 @@ class TelegramTests(IsolatedAsyncioTestCase):
         self.assertEqual(self.bot.channel({"urgent": 1}), 123)
         self.assertEqual(await self.bot.send(123, 5, "기사\n<https://example.com/>"), 9)
         kw = self.bot.call.await_args.kwargs
-        self.assertEqual(kw["text"], "기사\nhttps://example.com/")
+        self.assertEqual(kw["text"], "기사 · #5\nhttps://example.com/")
         self.assertEqual(
             kw["reply_markup"]["inline_keyboard"][0][0]["callback_data"], "news:5:up"
         )

@@ -83,7 +83,7 @@ adapter="dart"
 kind="공시"
 lang="ko"
 rule="none"
-enabled=false
+requires="DART_KEY"
 verification="설정 필요 · DART_KEY"
 
 [[sources]]
@@ -95,7 +95,7 @@ lang="en"
 company="NVIDIA"
 rule="none"
 url="https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001045810&owner=exclude&count=40&output=atom"
-enabled=false
+requires="SEC_USER_AGENT"
 verification="설정 필요 · SEC_USER_AGENT에 운영자 연락처"
 
 [[sources]]
@@ -106,7 +106,7 @@ kind="논문"
 lang="en"
 rule="none"
 url="https://rss.arxiv.org/rss/q-fin"
-enabled=false
+enabled=true
 verification="공개 RSS 응답 정상 · 표본 0건"
 
 # 기업 IR 또는 뉴스룸은 공식 RSS/Atom 주소로 [[sources]]를 추가한다.
@@ -133,3 +133,54 @@ verification="공식 뉴스룸 RSS 20건 수신"
 
 [translation]
 names=[]
+
+[trial_weights]
+company_kind=4
+company=0.5
+
+[[sources]]
+id="coreweave-ir"
+publisher="CoreWeave"
+adapter="rss"
+role="기업 IR"
+company="CoreWeave"
+kind="IR"
+lang="en"
+rule="none"
+url="https://investors.coreweave.com/rss/pressrelease.aspx"
+verification="공식 IR RSS 10건 수신"
+
+[[sources]]
+id="amd-ir"
+publisher="AMD"
+adapter="rss"
+role="기업 IR"
+company="AMD"
+kind="IR"
+lang="en"
+rule="none"
+url="https://ir.amd.com/news-events/press-releases/rss"
+verification="공식 IR RSS 10건 수신"
+
+[[sources]]
+id="sec-coreweave"
+publisher="SEC EDGAR"
+adapter="rss"
+company="CoreWeave"
+kind="공시"
+lang="en"
+rule="none"
+url="https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001769628&owner=exclude&count=40&output=atom"
+requires="SEC_USER_AGENT"
+verification="운영자 연락처 설정 필요"
+
+[[sources]]
+id="fed-working-papers"
+publisher="Federal Reserve Board"
+adapter="rss"
+role="기관 연구 원문"
+kind="연구 보고서"
+lang="en"
+rule="none"
+url="https://www.federalreserve.gov/feeds/working_papers.xml"
+verification="연준 공식 Working Papers RSS 15건 수신"

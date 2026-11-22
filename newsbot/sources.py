@@ -17,6 +17,11 @@ import requests
 from .core import KST, Item
 
 
+def enabled(source):
+    key = source.get("requires")
+    return source.get("enabled", True) and (not key or bool(os.getenv(key, "").strip()))
+
+
 def required(key):
     if not os.getenv(key, "").strip():
         raise ValueError("missing " + key)

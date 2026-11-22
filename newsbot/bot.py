@@ -10,7 +10,7 @@ from discord import app_commands
 
 from .core import KST
 from .delivery import deliver
-from .sources import ADAPTERS, error_label, required, translate
+from .sources import ADAPTERS, enabled, error_label, required, translate
 
 LABELS = {
     "up": "👍 더 보기",
@@ -139,13 +139,13 @@ async def translation_step(store):
         with store.db:
             store.db.execute(
                 """update items set ko=?,translated=?,state='ready',due=0,attempt=0,error=null
-                               where id=?""",
+                               where id=? and state='translate'""",
                 (ko, int(time.time()), row["id"]),
             )
     except Exception as exc:
         with store.db:
             store.db.execute(
-                "update items set error=?,due=?,attempt=attempt+1 where id=?",
+                "update items set error=?,due=?,attempt=attempt+1 where id=? and state='translate'",
                 (
                     error_label(exc),
                     now + min(1800, 30 * 2 ** min(row["attempt"], 6)),
@@ -208,7 +208,7 @@ class NewsBot(discord.Client):
                 ).fetchone()
                 lines.append(
                     f"{s['id']} · "
-                    + ("활성" if s.get("enabled", True) else "꺼짐")
+                    + ("활성" if enabled(s) else "꺼짐")
                     + " · 최근 성공 "
                     + fmt(r["success"] if r else None)
                     + " · "
@@ -330,7 +330,7 @@ class NewsBot(discord.Client):
             self.workers.append(asyncio.create_task(repeat(fn, delay, *args)))
 
         for s in self.store.cfg["sources"]:
-            if s.get("enabled", True):
+            if enabled(s):
                 start(poll, self.store.cfg["settings"]["poll_seconds"], self.store, s)
         start(translation_step, 1, self.store)
         start(self.send_step, 1)
