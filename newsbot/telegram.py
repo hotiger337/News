@@ -119,7 +119,11 @@ class Telegram:
                 if m and self.store.item(int(m[1])):
                     self.store.vote(self.owner, int(m[1]), m[2])
                     response = (
-                        "관심 자료만 묶어서 받습니다. 속보는 즉시 발송합니다."
+                        (
+                            "묶음 선호를 기록했습니다. 전체 수신 중에는 계속 즉시 발송합니다."
+                            if self.store.cfg["settings"].get("collect_all")
+                            else "관심 자료만 묶어서 받습니다. 속보는 즉시 발송합니다."
+                        )
                         if m[2] == "batch"
                         else "평가를 반영했습니다."
                     )
@@ -139,7 +143,11 @@ class Telegram:
         if cmd in ("/start", "/help"):
             reply = "/status 상태 · /recent 최근 속보 · /interests 관심사 · /add 이름 · /remove 이름 · /held 보류 후보 · /held 번호 평가 · /retry 번호 응답 유실 건 재발송"
         elif cmd == "/status":
-            lines = []
+            lines = [
+                "전체 수신 · 중복 정리"
+                if self.store.cfg["settings"].get("collect_all")
+                else "추천 수신"
+            ]
             for src in self.store.cfg["sources"]:
                 r = db.execute(
                     "select * from sources where id=?", (src["id"],)
@@ -259,6 +267,7 @@ class Telegram:
             await deliver(self.store, row, self)
 
     async def run(self):
+        self.store.cfg["settings"].setdefault("collect_all", True)
         with self.store.db:
             self.store.db.execute(
                 "update items set state='uncertain' where state='sending'"

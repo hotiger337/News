@@ -58,3 +58,31 @@ class Flow(unittest.IsolatedAsyncioTestCase):
         s.vote(42, 4, "undo")
         s.vote(42, 5, "undo")
         self.assertEqual(before, [s.score(s.item(n), 20)[0] for n in (4, 5)])
+
+    async def test_collect_all_with_representative(self):
+        import copy
+
+        cfg = copy.deepcopy(CFG)
+        cfg["settings"]["collect_all"] = True
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(tmp + "/state.db", cfg)
+            try:
+                other = dict(SBS, id="other", publisher="Other")
+                title = "오늘 전국 각 지역에 새로운 체육 시설 개장"
+                store.ingest(SBS, [Item("old", "지난 기사", 1)], {}, now=1)
+                store.ingest(other, [], {}, now=1)
+                store.ingest(SBS, [Item("a", title, 2)], {}, now=2)
+                store.vote(1, 2, "down")
+                store.ingest(
+                    other,
+                    [Item("b", title, 3), Item("c", "전혀 다른 분야의 소식", 4)],
+                    {},
+                    now=4,
+                )
+                self.assertEqual(
+                    [store.item(i)["state"] for i in range(1, 5)],
+                    ["baseline", "ready", "duplicate", "ready"],
+                )
+                self.assertEqual(store.item(3)["related"], 2)
+            finally:
+                store.db.close()

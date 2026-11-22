@@ -25,6 +25,25 @@ def url_key(url):
     return urlunsplit((p.scheme.lower(), p.netloc.lower(), p.path, urlencode(args), ""))
 
 
+def story_keys(item):
+    # Remove editorial wrapping, keep amounts, signs, names and word order.
+    title = re.sub(
+        r"^\s*(?:\[속보\]|\[breaking(?: news)?\]|breaking(?: news)?\s*:)\s*",
+        "",
+        item.title,
+        flags=re.I,
+    )
+    title = re.sub(r"""[‘’“”"'…]""", "", title.casefold())
+    title = " ".join(title.rstrip(". ").split())
+    keys = []
+    link = item.evidence or (item.links[0] if len(item.links) == 1 else "")
+    if link and urlsplit(link).path.strip("/"):
+        keys.append("url:" + url_key(link))
+    if len(title) >= 20 and len(title.split()) >= 4:
+        keys.append("title:" + title)
+    return keys
+
+
 @dataclass
 class Item:
     uid: str
@@ -93,6 +112,7 @@ CREATE TABLE IF NOT EXISTS items(id INTEGER PRIMARY KEY,publisher TEXT,source TE
  due INTEGER DEFAULT 0,attempt INTEGER DEFAULT 0,error TEXT,started INTEGER,sent INTEGER,message TEXT,channel TEXT,reason TEXT);
 CREATE TABLE IF NOT EXISTS source_errors(source TEXT PRIMARY KEY,at INTEGER,label TEXT);
 CREATE TABLE IF NOT EXISTS identities(publisher TEXT,k TEXT,current INTEGER,PRIMARY KEY(publisher,k));
+CREATE TABLE IF NOT EXISTS story_keys(k TEXT, item INTEGER, PRIMARY KEY(k,item));
 CREATE TABLE IF NOT EXISTS observations(source TEXT,uid TEXT,version TEXT,PRIMARY KEY(source,uid));
 CREATE TABLE IF NOT EXISTS evidence(url TEXT,item INTEGER,PRIMARY KEY(url,item));
 CREATE TABLE IF NOT EXISTS votes(owner TEXT,item INTEGER,content INTEGER DEFAULT 0,batch INTEGER DEFAULT 0,PRIMARY KEY(owner,item));
@@ -227,6 +247,50 @@ class Store:
             if urgent
             else "candidate"
         )
+        collect_all = self.cfg["settings"].get("collect_all", False)
+        keys_for_story = story_keys(item) if collect_all and not baseline else []
+        representative = None
+        for key in keys_for_story:
+            match = self.db.execute(
+                """select i.* from story_keys k join items i on i.id=k.item
+                  where k.k=? and i.found>=? and i.state in ('sent','ready','sending','translate','uncertain','retry')
+                  order by i.id limit 1""",
+                (key, now - 86400),
+            ).fetchone()
+            if not match or prev:
+                continue
+            first = json.loads(match["data"])
+            if first["title"] != item.title and (
+                re.search(
+                    r"정정|철회|확정|공식 확인|correct|retract|confirm",
+                    item.title,
+                    re.I,
+                )
+                or re.findall(r"[-+]?\d+(?:[.,]\d+)*", first["title"])
+                != re.findall(r"[-+]?\d+(?:[.,]\d+)*", item.title)
+            ):
+                continue
+            if first.get("detail") and item.detail and first["detail"] != item.detail:
+                continue
+            representative = match
+            break
+        if (
+            representative
+            and urgent
+            and not representative["urgent"]
+            and representative["state"] in ("ready", "retry")
+        ):
+            self.db.execute(
+                "update items set state='superseded' where id=?",
+                (representative["id"],),
+            )
+            representative = None
+        if representative:
+            state = "duplicate"
+            related = (representative["id"],)
+        elif collect_all and state == "candidate":
+            state = "ready"
+            data["all_sources"] = True
         n = self.db.execute(
             """insert into items(publisher,source,data,features,urgent,found,previous,related,state)
           values(?,?,?,?,?,?,?,?,?)""",
@@ -242,6 +306,21 @@ class Store:
                 state,
             ),
         ).lastrowid
+        if keys_for_story:
+            target = representative["id"] if representative else n
+            self.db.executemany(
+                "insert or ignore into story_keys values(?,?)",
+                [(k, target) for k in keys_for_story],
+            )
+        if collect_all and not baseline and not urgent:
+            score, parts, _ = self.score(self.item(n), now)
+            self.log_score(
+                "intake",
+                self.item(n),
+                score,
+                parts,
+                "중복" if representative else "전체 수신",
+            )
         self.bind(publisher, keys, n)
         if evidence:
             self.db.execute(
@@ -354,6 +433,8 @@ class Store:
 
     def digest(self, now):
         cfg = self.cfg["settings"]
+        if cfg.get("collect_all"):
+            return
         local = datetime.fromtimestamp(now, KST)
         day = local.date().isoformat()
         if local.strftime("%H:%M") < cfg["digest_time"]:
@@ -407,6 +488,8 @@ def render(store, r):
     label = (
         ("국내 속보" if d["lang"] == "ko" else "해외 속보")
         if r["urgent"]
+        else "새 자료"
+        if d.get("all_sources")
         else "관심 자료"
     )
     lines = [
