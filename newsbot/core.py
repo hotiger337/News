@@ -266,6 +266,9 @@ class Store:
             else "candidate"
         )
         collect_all = self.cfg["settings"].get("collect_all", False)
+        if collect_all and state == "candidate":
+            state = "ready" if s["lang"] == "ko" else "translate"
+            data["all_sources"] = True
         keys_for_story = story_keys(item) if collect_all and not baseline else []
         representative = None
         for key in keys_for_story:
@@ -311,9 +314,6 @@ class Store:
         if representative:
             state = "duplicate"
             related = (representative["id"],)
-        elif collect_all and state == "candidate":
-            state = "ready"
-            data["all_sources"] = True
         n = self.db.execute(
             """insert into items(publisher,source,data,features,urgent,found,previous,related,state)
           values(?,?,?,?,?,?,?,?,?)""",
@@ -502,7 +502,14 @@ class Store:
         else:
             reason = "최근에 게시된 자료입니다."
         self.db.execute(
-            "update items set state='ready',reason=? where id=?", (reason, row["id"])
+            "update items set state=?,reason=? where id=?",
+            (
+                "ready"
+                if row["ko"] or json.loads(row["data"])["lang"] == "ko"
+                else "translate",
+                reason,
+                row["id"],
+            ),
         )
 
     def evaluate(self, row, now, run, instant):
@@ -567,7 +574,7 @@ class Store:
                     self.queue(r, parts)
 
 
-def render(store, r):
+def render(store, r, *, compact=False):
     d = json.loads(r["data"])
     label = (
         ("국내 속보" if d["lang"] == "ko" else "해외 속보")
@@ -594,9 +601,33 @@ def render(store, r):
         " · ".join(dict.fromkeys(v for v in [*kinds, d["role"], d["origin"]] if v))
     )
 
+    if compact:
+        headline = r["ko"] or d["title"]
+        lines = [headline[:750]]
+        if r["urgent"] and r["ko"]:
+            lines.append(d["title"][:350])
+        source = r["publisher"] + (" · @" + d["handle"] if d["handle"] else "")
+        when = datetime.fromtimestamp(d["published"], KST).strftime(
+            "%Y-%m-%d" if d.get("date_only") else "%m-%d %H:%M"
+        )
+        lines.append(
+            " · ".join(
+                filter(
+                    None,
+                    [
+                        source,
+                        "속보" if r["urgent"] else "",
+                        d.get("origin"),
+                        when + " KST",
+                        f"#{r['id']}",
+                    ],
+                )
+            )
+        )
+
     def reference(old):
         guild = os.getenv("DISCORD_GUILD_ID")
-        if guild and old["channel"] and old["message"]:
+        if not compact and guild and old["channel"] and old["message"]:
             return f"https://discord.com/channels/{guild}/{old['channel']}/{old['message']}"
         return f"#{old['id']}"
 
@@ -637,6 +668,8 @@ def render(store, r):
             links.append(more)
     if cited:
         lines.append("함께 보도 · " + ", ".join(sorted(cited))[:200])
+    if compact:
+        return "\n".join([*lines, *links])
     footer = "".join("\n<" + u + ">" for u in links)
     room = 1998 - len(footer)
     if room < 200:

@@ -122,3 +122,20 @@ class Improvements(unittest.IsolatedAsyncioTestCase):
         self.s.recover_representatives(4)
         self.assertEqual(self.s.item(1)["state"], "duplicate")
         self.assertEqual(self.s.item(2)["state"], "ready")
+
+    async def test_bbc_regular_article_translated_before_send(self):
+        from newsbot.bot import translation_step
+
+        src = dict(self.foreign, rule="none", publisher="BBC")
+        self.add(src, "New chip factory opens", 2)
+        self.assertEqual(self.s.item(1)["state"], "translate")
+        await self.bot.send_step()
+        self.bot.call.assert_not_awaited()
+        with patch("newsbot.bot.translate", return_value="새 반도체 공장 문 열어"):
+            await translation_step(self.s)
+        await self.bot.send_step()
+        lines = self.bot.call.await_args.kwargs["text"].splitlines()
+        self.assertEqual(lines[0], "새 반도체 공장 문 열어")
+        self.assertTrue(lines[1].startswith("BBC · "))
+        self.assertEqual(lines[-1], self.url)
+        self.assertEqual(len(lines), 3)

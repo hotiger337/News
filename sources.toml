@@ -184,3 +184,33 @@ lang="en"
 rule="none"
 url="https://www.federalreserve.gov/feeds/working_papers.xml"
 verification="연준 공식 Working Papers RSS 15건 수신"
+
+[[sources]]
+id="yna-local"
+publisher="연합뉴스"
+adapter="rss"
+url="https://www.yna.co.kr/rss/local.xml"
+lang="ko"
+rule="marker"
+marker='^\s*\[속보\]'
+verification="전국 섹션 120건 수신"
+
+[[sources]]
+id="khan"
+publisher="경향신문"
+adapter="rss"
+url="https://www.khan.co.kr/rss/rssdata/total_news.xml"
+lang="ko"
+rule="marker"
+marker='^\s*\[속보\]'
+verification="전체 RSS 50건 수신"
+
+[[sources]]
+id="etnews"
+publisher="전자신문"
+adapter="rss"
+url="https://rss.etnews.com/Section901.xml"
+lang="ko"
+rule="marker"
+marker='^\s*\[속보\]'
+verification="오늘의뉴스 RSS 30건 수신"

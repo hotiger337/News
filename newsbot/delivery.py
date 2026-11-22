@@ -3,7 +3,7 @@ import time
 from .core import render
 
 
-async def deliver(store, row, transport):
+async def deliver(store, row, transport, *, compact=False):
     db = store.db
     n = row["id"]
     try:
@@ -18,7 +18,7 @@ async def deliver(store, row, transport):
                     )
                 return
         channel = row["channel"] or transport.channel(row)
-        body = render(store, row)
+        body = render(store, row, compact=compact)
         now = int(time.time())
         with db:
             db.execute(

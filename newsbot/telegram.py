@@ -102,12 +102,8 @@ class Telegram:
             {"text": label, "callback_data": f"news:{n}:{act}"}
             for act, label in LABELS.items()
         ]
-        # Include a stable number so a closed rating can be reopened.
-        head, sep, tail = body.partition("\n")
-        text = f"{head} · #{n}{sep}{tail}"
-        text = re.sub(r"(?m)^<(https?://[^<>\n]+)>$", r"\1", text)
         return dict(
-            text=text,
+            text=body,
             reply_markup={"inline_keyboard": [keys[:2], keys[2:]]},
             link_preview_options={"is_disabled": True},
         )
@@ -132,7 +128,7 @@ class Telegram:
         if not row:
             return
         n = row["id"]
-        payload = self.article_payload(n, render(self.store, row))
+        payload = self.article_payload(n, render(self.store, row, compact=True))
         if db.execute(
             "select 1 from hidden_ratings where chat=? and message=?",
             (row["channel"], row["message"]),
@@ -243,6 +239,8 @@ class Telegram:
                 else "추천 수신"
             ]
             lines += activity(db, int(time.time()))
+            if not os.getenv("TRANSLATOR_KEY", "").strip():
+                lines.append("해외 기사 번역 · TRANSLATOR_KEY 설정 필요")
             for src in self.store.cfg["sources"]:
                 r = db.execute(
                     "select * from sources where id=?", (src["id"],)
@@ -321,7 +319,21 @@ class Telegram:
         elif cmd == "/held" and arg.isdecimal() and len(arg) < 15:
             r = self.store.item(int(arg))
             if r and r["state"] == "candidate":
-                await self.send(self.owner, r["id"], render(self.store, r))
+                if json.loads(r["data"])["lang"] != "ko" and not r["ko"]:
+                    with db:
+                        db.execute(
+                            "update items set state='translate',due=0 where id=?",
+                            (r["id"],),
+                        )
+                    await self.call(
+                        "sendMessage",
+                        chat_id=self.owner,
+                        text="한국어 번역 후 발송합니다.",
+                    )
+                    return
+                await self.send(
+                    self.owner, r["id"], render(self.store, r, compact=True)
+                )
                 return
             reply = "해당 보류 후보가 없습니다."
         elif cmd == "/retry" and arg.isdecimal() and len(arg) < 15:
@@ -363,8 +375,15 @@ class Telegram:
             "select * from items where state in ('ready','retry') and due<=? order by urgent desc,id limit 1",
             (int(time.time()),),
         ).fetchone()
+        if row and not row["ko"] and json.loads(row["data"])["lang"] != "ko":
+            with self.store.db:
+                self.store.db.execute(
+                    "update items set state='translate',attempt=0,due=0 where id=?",
+                    (row["id"],),
+                )
+            return
         if row:
-            await deliver(self.store, row, self)
+            await deliver(self.store, row, self, compact=True)
 
     async def run(self):
         self.store.cfg["settings"].setdefault("collect_all", True)

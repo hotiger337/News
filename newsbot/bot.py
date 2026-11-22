@@ -122,7 +122,7 @@ async def poll(store, s):
 async def translation_step(store):
     now = int(time.time())
     row = store.db.execute(
-        "select * from items where state='translate' and due<=? order by id limit 1",
+        "select * from items where state='translate' and due<=? order by urgent desc,id limit 1",
         (now,),
     ).fetchone()
     if not row:

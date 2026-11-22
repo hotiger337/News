@@ -7,7 +7,7 @@ tmpdir=$(mktemp -d)
 trap 'rm -rf "$tmpdir"' EXIT
 "$app/.venv/bin/python" -m unittest discover -s tests -q
 # Preserve local settings via a three-way merge with the previously shipped config.
-git show 2c34ded:sources.toml > "$tmpdir/base"
+git show b686371:sources.toml > "$tmpdir/base"
 if cmp -s sources.toml "$app/sources.toml"; then
     cp sources.toml "$tmpdir/merged"
 elif ! git merge-file -p "$app/sources.toml" "$tmpdir/base" sources.toml > "$tmpdir/merged"; then
