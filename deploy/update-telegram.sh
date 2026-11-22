@@ -7,7 +7,7 @@ tmpdir=$(mktemp -d)
 trap 'rm -rf "$tmpdir"' EXIT
 "$app/.venv/bin/python" -m unittest discover -s tests -q
 # Preserve local settings via a three-way merge with the previously shipped config.
-git show b686371:sources.toml > "$tmpdir/base"
+git show 4bdac0d:sources.toml > "$tmpdir/base"
 if cmp -s sources.toml "$app/sources.toml"; then
     cp sources.toml "$tmpdir/merged"
 elif ! git merge-file -p "$app/sources.toml" "$tmpdir/base" sources.toml > "$tmpdir/merged"; then
@@ -15,6 +15,10 @@ elif ! git merge-file -p "$app/sources.toml" "$tmpdir/base" sources.toml > "$tmp
     exit 1
 fi
 "$app/.venv/bin/python" -c 'import sys,tomllib; tomllib.load(open(sys.argv[1],"rb"))' "$tmpdir/merged"
+sudo "$app/.venv/bin/pip" install --only-binary=:all: -r requirements-translation.txt
+sudo python3 deploy/install-translation-model.py "$app/models/en_ko-1.1"
+sudo install -m 644 newsbot/local_translation.py "$app/newsbot/"
+(cd "$app" && sudo -u newsbot "$app/.venv/bin/python" -c 'from newsbot.local_translation import translate_local; print(translate_local("New chip factory opens in Korea","en",[]))')
 sudo install -m 644 newsbot/*.py "$app/newsbot/"
 sudo install -m 644 "$tmpdir/merged" "$app/sources.toml"
 sudo install -d -m 755 /etc/systemd/system/newsbot.service.d

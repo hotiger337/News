@@ -89,7 +89,7 @@ sudo systemctl restart newsbot
 
 ## 선택 출처와 번역
 
-- **해외 속보 번역**은 Azure AI Translator Text API의 기존 리소스 키(`TRANSLATOR_KEY`)와 리소스에 필요한 리전(`TRANSLATOR_REGION`)을 사용한다. 제목 또는 X 본문을 원문 언어에서 한국어로 직접 번역한다. 수치·주요 단위와 등록된 기업명·고유명사는 HTML 번역 제외 구간으로 보내고 반환값에 남았는지 검사한다. 추가 인명은 TOML의 translation.names에 등록한다. 숫자, 단위, 고유명사, 인용 주체와 불확실성은 원문을 병기해 확인할 수 있다. 기계 번역의 정확성을 보장할 수 없으므로 첫 실제 수신 때 대조한다. 번역이 비었거나 한글이 없거나 API 요청이 실패하면 별도 대기열에서 재시도한다. 원문만 먼저 발송하지 않는다. 문자 수 기반 사용량·무료 할당과 과금은 리소스 요금제에 따른다. 설치 과정에 리소스 생성이나 결제 단계는 없다. [Azure Translator 요금](https://azure.microsoft.com/pricing/details/cognitive-services/translator/)
+- **선택형 Azure 번역**은 Azure AI Translator Text API의 기존 리소스 키(`TRANSLATOR_KEY`)와 리소스에 필요한 리전(`TRANSLATOR_REGION`)을 사용한다. 제목 또는 X 본문을 원문 언어에서 한국어로 직접 번역한다. 수치·주요 단위와 등록된 기업명·고유명사는 HTML 번역 제외 구간으로 보내고 반환값에 남았는지 검사한다. 추가 인명은 TOML의 translation.names에 등록한다. 숫자, 단위, 고유명사, 인용 주체와 불확실성은 원문을 병기해 확인할 수 있다. 기계 번역의 정확성을 보장할 수 없으므로 첫 실제 수신 때 대조한다. 번역이 비었거나 한글이 없거나 API 요청이 실패하면 별도 대기열에서 재시도한다. 원문만 먼저 발송하지 않는다. 문자 수 기반 사용량·무료 할당과 과금은 리소스 요금제에 따른다. 설치 과정에 리소스 생성이나 결제 단계는 없다. [Azure Translator 요금](https://azure.microsoft.com/pricing/details/cognitive-services/translator/)
 - **WP**는 Breaking News Alerts를 먼저 구독한다. 수신 메일의 발신 주소와 구독 식별 헤더 또는 수신 별칭으로 메일 제공자의 규칙을 만들고 **해당 구독만** 전용 라벨로 보낸다. `WP_FROM`은 실제 메일에서 확인한 정확한 주소, `WP_FOLDER`는 IMAP에 노출되는 전용 폴더명이다(ASCII 권장). `IMAP_HOST/USER/PASSWORD`와 `enabled=true`를 설정한다. 제공자가 허용한 앱 비밀번호 등 IMAP 로그인 수단이 필요하다. OAuth 전용 메일함은 이 어댑터로 로그인할 수 없다. 읽기 전용 선택, UID 검색, BODY.PEEK, From 재검사를 사용한다. 첫 연결은 기존 UID까지 기준점만 잡는다. 메일 본문에서 식별한 WP 기사 링크를 표시한다. 추적 링크만 있는 메일에서는 기사 URL을 생략할 수 있다.
 - **OpenDART**는 발급받은 `DART_KEY`를 입력하고 dart를 활성화한다. 공시의 공개 일자만 제공되면 KST 날짜와 ‘시각 미제공’을 표시한다. **EDGAR**는 `SEC_USER_AGENT="운영 프로그램명 연락가능한이메일"`로 설정하고 CIK별 Atom 예시를 활성화한다. 비밀 키는 필요 없지만 SEC 접근 정책·응답을 해당 서버에서 확인한다. [OpenDART](https://opendart.fss.or.kr/) · [SEC 접근 안내](https://www.sec.gov/about/developer-resources)
 - **IR·연구 보고서**는 `sources.toml`에서 NVIDIA/SEC 항목을 복사해 고유 ID, 실제 공식 RSS/Atom 주소, 정확한 publisher·lang·kind·company와 `rule="none"`을 지정한다. arXiv 예시는 q-fin 피드다. 일반 HTML 목록이나 PDF URL은 피드로 사용할 수 없다. `python -m newsbot probe 출처ID`는 비활성 출처도 점검하며 DB와 디스코드에 쓰지 않는다. WP probe는 접속·검색만 확인한다. 실제 새 메일 본문 검증에는 기준점 이후의 수신이 필요하다.
@@ -136,4 +136,13 @@ sudo -u newsbot env NEWS_DB=/var/lib/newsbot/news.sqlite3 \
 - `/sources`는 최근 7일 출처별 수집, 대표 발송, 단독(다른 출처의 중복이 확인되지 않은 대표), 중복, 👍 건수를 표시한다.
 - 공개 원문 출처에 CoreWeave IR, AMD IR, 연준 Working Papers를 추가하고 arXiv q-fin을 활성화했다. DART는 DART_KEY, SEC NVIDIA·CoreWeave Atom은 운영자 연락처가 있는 SEC_USER_AGENT 설정 후 재시작하면 조회한다. 공개 원문의 첫 정상 조회는 과거 기사의 기준점이다.
 
-텔레그램 일반 기사도 해외 자료는 한국어 번역을 마쳐야 발송된다. 기본 표시 순서는 제목, 출처·한국시간·기사 번호, 원문 링크다. 해외 속보만 번역 제목 다음에 원문도 병기한다. 번역 키가 없으면 /status에 설정 필요가 표시된다. 국내 공개 피드에 연합뉴스 전국, 경향신문 전체, 전자신문 오늘의뉴스를 추가했다.
+텔레그램 일반 기사도 해외 자료는 한국어 번역을 마쳐야 발송된다. 기본 표시 순서는 제목, 출처·한국시간·기사 번호, 원문 링크다. 해외 속보만 번역 제목 다음에 원문도 병기한다. 키가 없으면 서버 로컬 모델을 사용한다. 국내 공개 피드에 연합뉴스 전국, 경향신문 전체, 전자신문 오늘의뉴스를 추가했다.
+
+
+## 키 없는 번역과 국가별 원문
+
+기존 서버 업데이트 명령은 동일하다. `bash deploy/update-telegram.sh`가 CPU용 CTranslate2·SentencePiece를 설치하고 약 116 MiB의 Argos 영어→한국어 모델을 한 번 내려받는다. SHA-256 확인과 서비스 사용자로 실제 한국어 번역을 거친 뒤 봇을 재시작한다. 설치 때 모델 아카이브와 압축 해제 파일을 동시에 둘 여유 공간이 필요하다. 정상 설치 후에는 이미 설치된 모델을 재사용한다. 신규 설치 시에도 기본 설치 후 이 업데이트 명령을 실행한다.
+
+TRANSLATOR_KEY가 비어 있으면 기사 텍스트를 외부 번역 서비스로 보내지 않는다. 모델은 CPU INT8, 추론 스레드 1개로 실행하며 영문만 지원한다. 기존 Azure 키를 명시한 설치는 Azure 번역을 계속 사용한다. 로컬 모델은 숫자·등록명·일부 부정 및 불확실성 표현이 사라지면 발송을 보류하고 기존 대기열에서 재시도한다. 이 검사는 전체 번역의 정확성을 보장하지 않는다. 같은 모델에서 재시도해도 품질 검사를 계속 통과하지 못하는 기사는 대기에 남을 수 있다. [모델 색인](https://github.com/argosopentech/argospm-index) · [추론 엔진](https://github.com/OpenNMT/CTranslate2)
+
+이번에 추가한 국가는 미국·캐나다·멕시코·아르헨티나·독일·프랑스·스페인·일본·인도·파키스탄·스리랑카·싱가포르·필리핀·호주·뉴질랜드·카타르·이집트·나이지리아·케냐·가나다. 각국의 현지 편집국 한 곳을 골라 공식 영문 RSS로 검증했다. 국가 표시는 발행 매체의 소재지이며 개별 기사의 발생 지역과 다를 수 있다. 개인 관심사를 위한 편집국 선정이며 영어판의 보도 범위에 한정된다. 기존 국내 매체와 영국 BBC·Sky는 유지한다. sources.toml의 country, publisher, url 및 verification에서 개별 주소와 수신 표본 수를 확인한다. 신규 피드는 첫 조회를 기준점으로만 저장한다.

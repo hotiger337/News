@@ -203,6 +203,7 @@ class Store:
         data = dict(
             asdict(item),
             lang=s["lang"],
+            country=s.get("country", ""),
             role=s.get("role", ""),
             handle=s.get("handle", ""),
         )
@@ -606,7 +607,9 @@ def render(store, r, *, compact=False):
         lines = [headline[:750]]
         if r["urgent"] and r["ko"]:
             lines.append(d["title"][:350])
-        source = r["publisher"] + (" · @" + d["handle"] if d["handle"] else "")
+        source = " ".join(filter(None, [d.get("country"), r["publisher"]])) + (
+            " · @" + d["handle"] if d["handle"] else ""
+        )
         when = datetime.fromtimestamp(d["published"], KST).strftime(
             "%Y-%m-%d" if d.get("date_only") else "%m-%d %H:%M"
         )

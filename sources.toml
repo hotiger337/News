@@ -214,3 +214,243 @@ lang="ko"
 rule="marker"
 marker='^\s*\[속보\]'
 verification="오늘의뉴스 RSS 30건 수신"
+
+[[sources]]
+id="world-us"
+country="미국"
+publisher="NPR"
+adapter="rss"
+url="https://feeds.npr.org/1001/rss.xml"
+lang="en"
+rule="marker"
+marker='(?i)^\s*(?:\[breaking(?: news)?\]|breaking(?: news)?\s*[:：–—-])'
+category_markers=["breaking","breaking news"]
+verification="공식 영문 피드 10건 수신"
+
+[[sources]]
+id="world-ca"
+country="캐나다"
+publisher="Global News"
+adapter="rss"
+url="https://globalnews.ca/feed/"
+lang="en"
+rule="marker"
+marker='(?i)^\s*(?:\[breaking(?: news)?\]|breaking(?: news)?\s*[:：–—-])'
+category_markers=["breaking","breaking news"]
+verification="공식 영문 피드 10건 수신"
+
+[[sources]]
+id="world-mx"
+country="멕시코"
+publisher="Mexico News Daily"
+adapter="rss"
+url="https://mexiconewsdaily.com/feed/"
+lang="en"
+rule="marker"
+marker='(?i)^\s*(?:\[breaking(?: news)?\]|breaking(?: news)?\s*[:：–—-])'
+category_markers=["breaking","breaking news"]
+verification="공식 영문 피드 10건 수신"
+
+[[sources]]
+id="world-ar"
+country="아르헨티나"
+publisher="Buenos Aires Herald"
+adapter="rss"
+url="https://buenosairesherald.com/feed"
+lang="en"
+rule="marker"
+marker='(?i)^\s*(?:\[breaking(?: news)?\]|breaking(?: news)?\s*[:：–—-])'
+category_markers=["breaking","breaking news"]
+verification="공식 영문 피드 10건 수신"
+
+[[sources]]
+id="world-de"
+country="독일"
+publisher="DW"
+adapter="rss"
+url="https://rss.dw.com/rdf/rss-en-all"
+lang="en"
+rule="marker"
+marker='(?i)^\s*(?:\[breaking(?: news)?\]|breaking(?: news)?\s*[:：–—-])'
+category_markers=["breaking","breaking news"]
+verification="공식 영문 피드 140건 수신"
+
+[[sources]]
+id="world-fr"
+country="프랑스"
+publisher="Le Monde"
+adapter="rss"
+url="https://www.lemonde.fr/en/rss/une.xml"
+lang="en"
+rule="marker"
+marker='(?i)^\s*(?:\[breaking(?: news)?\]|breaking(?: news)?\s*[:：–—-])'
+category_markers=["breaking","breaking news"]
+verification="공식 영문 피드 14건 수신"
+
+[[sources]]
+id="world-es"
+country="스페인"
+publisher="EL PAÍS"
+adapter="rss"
+url="https://feeds.elpais.com/mrss-s/pages/ep/site/english.elpais.com/portada"
+lang="en"
+rule="marker"
+marker='(?i)^\s*(?:\[breaking(?: news)?\]|breaking(?: news)?\s*[:：–—-])'
+category_markers=["breaking","breaking news"]
+verification="공식 영문 피드 58건 수신"
+
+[[sources]]
+id="world-jp-en"
+country="일본"
+publisher="The Japan Times"
+adapter="rss"
+url="https://www.japantimes.co.jp/feed/"
+lang="en"
+rule="marker"
+marker='(?i)^\s*(?:\[breaking(?: news)?\]|breaking(?: news)?\s*[:：–—-])'
+category_markers=["breaking","breaking news"]
+verification="공식 영문 피드 30건 수신"
+
+[[sources]]
+id="world-in"
+country="인도"
+publisher="The Hindu"
+adapter="rss"
+url="https://www.thehindu.com/news/national/feeder/default.rss"
+lang="en"
+rule="marker"
+marker='(?i)^\s*(?:\[breaking(?: news)?\]|breaking(?: news)?\s*[:：–—-])'
+category_markers=["breaking","breaking news"]
+verification="공식 영문 피드 60건 수신"
+
+[[sources]]
+id="world-pk"
+country="파키스탄"
+publisher="Dawn"
+adapter="rss"
+url="https://www.dawn.com/feeds/home"
+lang="en"
+rule="marker"
+marker='(?i)^\s*(?:\[breaking(?: news)?\]|breaking(?: news)?\s*[:：–—-])'
+category_markers=["breaking","breaking news"]
+verification="공식 영문 피드 29건 수신"
+
+[[sources]]
+id="world-lk"
+country="스리랑카"
+publisher="Ada Derana"
+adapter="rss"
+url="https://www.adaderana.lk/rss.php"
+lang="en"
+rule="marker"
+marker='(?i)^\s*(?:\[breaking(?: news)?\]|breaking(?: news)?\s*[:：–—-])'
+category_markers=["breaking","breaking news"]
+verification="공식 영문 피드 25건 수신"
+
+[[sources]]
+id="world-sg"
+country="싱가포르"
+publisher="CNA"
+adapter="rss"
+url="https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml"
+lang="en"
+rule="marker"
+marker='(?i)^\s*(?:\[breaking(?: news)?\]|breaking(?: news)?\s*[:：–—-])'
+category_markers=["breaking","breaking news"]
+verification="공식 영문 피드 20건 수신"
+
+[[sources]]
+id="world-ph"
+country="필리핀"
+publisher="Philstar"
+adapter="rss"
+url="https://www.philstar.com/rss/headlines"
+lang="en"
+rule="marker"
+marker='(?i)^\s*(?:\[breaking(?: news)?\]|breaking(?: news)?\s*[:：–—-])'
+category_markers=["breaking","breaking news"]
+verification="공식 영문 피드 10건 수신"
+
+[[sources]]
+id="world-au"
+country="호주"
+publisher="ABC Australia"
+adapter="rss"
+url="https://www.abc.net.au/news/feed/51120/rss.xml"
+lang="en"
+rule="marker"
+marker='(?i)^\s*(?:\[breaking(?: news)?\]|breaking(?: news)?\s*[:：–—-])'
+category_markers=["breaking","breaking news"]
+verification="공식 영문 피드 25건 수신"
+
+[[sources]]
+id="world-nz"
+country="뉴질랜드"
+publisher="RNZ"
+adapter="rss"
+url="https://www.rnz.co.nz/rss/national.xml"
+lang="en"
+rule="marker"
+marker='(?i)^\s*(?:\[breaking(?: news)?\]|breaking(?: news)?\s*[:：–—-])'
+category_markers=["breaking","breaking news"]
+verification="공식 영문 피드 30건 수신"
+
+[[sources]]
+id="world-qa"
+country="카타르"
+publisher="Al Jazeera"
+adapter="rss"
+url="https://www.aljazeera.com/xml/rss/all.xml"
+lang="en"
+rule="marker"
+marker='(?i)^\s*(?:\[breaking(?: news)?\]|breaking(?: news)?\s*[:：–—-])'
+category_markers=["breaking","breaking news"]
+verification="공식 영문 피드 25건 수신"
+
+[[sources]]
+id="world-eg"
+country="이집트"
+publisher="Daily News Egypt"
+adapter="rss"
+url="https://www.dailynewsegypt.com/feed/"
+lang="en"
+rule="marker"
+marker='(?i)^\s*(?:\[breaking(?: news)?\]|breaking(?: news)?\s*[:：–—-])'
+category_markers=["breaking","breaking news"]
+verification="공식 영문 피드 10건 수신"
+
+[[sources]]
+id="world-ng"
+country="나이지리아"
+publisher="Premium Times"
+adapter="rss"
+url="https://www.premiumtimesng.com/feed"
+lang="en"
+rule="marker"
+marker='(?i)^\s*(?:\[breaking(?: news)?\]|breaking(?: news)?\s*[:：–—-])'
+category_markers=["breaking","breaking news"]
+verification="공식 영문 피드 15건 수신"
+
+[[sources]]
+id="world-ke"
+country="케냐"
+publisher="Capital FM Kenya"
+adapter="rss"
+url="https://www.capitalfm.co.ke/news/feed/"
+lang="en"
+rule="marker"
+marker='(?i)^\s*(?:\[breaking(?: news)?\]|breaking(?: news)?\s*[:：–—-])'
+category_markers=["breaking","breaking news"]
+verification="공식 영문 피드 10건 수신"
+
+[[sources]]
+id="world-gh"
+country="가나"
+publisher="MyJoyOnline"
+adapter="rss"
+url="https://www.myjoyonline.com/feed/"
+lang="en"
+rule="marker"
+marker='(?i)^\s*(?:\[breaking(?: news)?\]|breaking(?: news)?\s*[:：–—-])'
+category_markers=["breaking","breaking news"]
+verification="공식 영문 피드 50건 수신"

@@ -355,6 +355,10 @@ def protected_text(text, names):
 
 def translate(text, lang, names=()):
     markup, required_values = protected_text(text, names)
+    if not os.getenv("TRANSLATOR_KEY", "").strip():
+        from .local_translation import translate_local
+
+        return translate_local(text, lang, required_values)
     headers = {"Ocp-Apim-Subscription-Key": required("TRANSLATOR_KEY")}
     if os.getenv("TRANSLATOR_REGION"):
         headers["Ocp-Apim-Subscription-Region"] = os.environ["TRANSLATOR_REGION"]

@@ -240,7 +240,7 @@ class Telegram:
             ]
             lines += activity(db, int(time.time()))
             if not os.getenv("TRANSLATOR_KEY", "").strip():
-                lines.append("해외 기사 번역 · TRANSLATOR_KEY 설정 필요")
+                lines.append("해외 기사 번역 · 서버 내 영어→한국어 모델")
             for src in self.store.cfg["sources"]:
                 r = db.execute(
                     "select * from sources where id=?", (src["id"],)
