@@ -1,4 +1,5 @@
 import argparse
+import asyncio
 import fcntl
 import json
 import os
@@ -18,9 +19,16 @@ def main():
     os.umask(0o077)
     load_dotenv(".env")
     p = argparse.ArgumentParser()
-    p.add_argument("command", choices=["run", "probe", "backup", "compare"])
+    p.add_argument(
+        "command", choices=["run", "probe", "backup", "compare", "telegram-id"]
+    )
     p.add_argument("argument", nargs="?")
     args = p.parse_args()
+    if args.command == "telegram-id":
+        from .telegram import identify
+
+        identify()
+        return
     cfg = tomllib.loads(Path(os.getenv("NEWS_CONFIG", "sources.toml")).read_text())
     dbpath = Path(os.getenv("NEWS_DB", "state/news.sqlite3")).resolve()
     if args.command == "probe":
@@ -74,6 +82,11 @@ def main():
             print(
                 json.dumps(dict(id=row["id"], old=a[:2], new=b[:2]), ensure_ascii=False)
             )
+        return
+    if os.getenv("TELEGRAM_BOT_TOKEN"):
+        from .telegram import Telegram
+
+        asyncio.run(Telegram(store).run())
         return
     NewsBot(store).run(required("DISCORD_TOKEN"), log_handler=None)
 

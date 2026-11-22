@@ -1,4 +1,12 @@
-# 개인 디스코드 뉴스 봇
+# 개인 뉴스 봇
+
+## 텔레그램 개인 대화 설정
+
+1. 텔레그램 공식 @BotFather에서 /mybots → 내 봇 → API Token으로 기존 토큰을 확인한다. 같은 봇을 이미 다른 프로그램에서 사용 중이라면 동시에 폴링할 수 없으므로 뉴스용 봇을 별도로 선택한다.
+2. Azure 저장소 디렉터리에서 `.venv/bin/python -m newsbot telegram-id`를 실행한다. 토큰은 숨김 입력된다. 화면에 표시되는 봇 링크를 열고 개인 대화에 일회용 /start 명령을 보내면 본인 TELEGRAM_OWNER_ID가 서버 터미널에 출력된다.
+3. 아래 Azure 설치 절차를 사용하고 /etc/newsbot.env에 TELEGRAM_BOT_TOKEN과 TELEGRAM_OWNER_ID를 입력한다. 텔레그램 모드는 DISCORD 항목을 비워둔다. 개인 대화 하나로 운영하면 두 TELEGRAM_*_CHAT_ID 값도 비워둔다. 별도 채널을 지정할 경우 해당 채널에 봇의 게시 권한이 필요하다. 이전에 디스코드로 운영했다면 텔레그램 전용 NEWS_DB 경로를 지정한다.
+4. 서비스 시작 후 봇 대화에서 /status, /interests, /recent를 확인한다. /add 이름, /remove 이름으로 관심사를 편집하고 /held로 보류 후보를 조회한다. 기사 버튼은 재시작 후에도 본인만 사용할 수 있다. Telegram Bot API는 발송 기록 검색을 제공하지 않아 응답 유실 시 /status에 기사 번호를 남긴다. 대화에 해당 알림이 없는지 확인한 뒤 /retry 번호로 재발송한다.
+
 
 Azure Linux 서버 한 대에서 공식 RSS·Atom, 선택한 메일함과 계정을 주기적으로 읽고, 비공개 디스코드 서버에 먼저 메시지를 보낸다. Python 3.11 이상, discord.py 2.x, SQLite(WAL), systemd를 사용한다. 기본 조회 간격은 60초다. 실제 지연에는 매체의 피드 게시 지연, 조회 주기, 해외 속보 번역 및 디스코드 응답 시간이 포함된다.
 
