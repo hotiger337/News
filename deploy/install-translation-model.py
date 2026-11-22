@@ -2,10 +2,9 @@
 
 import hashlib
 import os
-import shutil
+import subprocess
 import sys
 import tempfile
-import urllib.request
 import zipfile
 from pathlib import Path
 
@@ -27,8 +26,23 @@ def install(target):
     target.parent.chmod(0o755)
     with tempfile.TemporaryDirectory(dir=target.parent) as tmp:
         archive = Path(tmp) / "archive"
-        with urllib.request.urlopen(URL, timeout=90) as src, archive.open("wb") as out:
-            shutil.copyfileobj(src, out)
+        subprocess.run(
+            [
+                "curl",
+                "--fail",
+                "--silent",
+                "--show-error",
+                "--location",
+                "--retry",
+                "3",
+                "--max-time",
+                "300",
+                "--output",
+                str(archive),
+                URL,
+            ],
+            check=True,
+        )
         with archive.open("rb") as src:
             if hashlib.file_digest(src, "sha256").hexdigest() != SHA:
                 raise ValueError("model checksum mismatch")
