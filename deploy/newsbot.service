@@ -1,0 +1,25 @@
+[Unit]
+Description=Personal Discord news bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=newsbot
+Group=newsbot
+WorkingDirectory=/opt/newsbot
+EnvironmentFile=/etc/newsbot.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/newsbot/.venv/bin/python -m newsbot run
+Restart=on-failure
+RestartSec=10
+UMask=0077
+StateDirectory=newsbot
+StateDirectoryMode=0700
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

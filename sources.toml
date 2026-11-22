@@ -1,0 +1,135 @@
+[settings]
+poll_seconds = 60
+digest_time = "20:00"
+top = 4
+adjacent = 1
+instant_threshold = 4.0
+max_age_hours = 72
+initial_interests = ["AI 데이터센터","반도체","기업 자금 조달","퀀트 전략"]
+
+[weights]
+company_kind = 3
+topic = 2
+company = 1
+kind = 0.5
+interest = 1.5
+freshness = 1
+
+[companies]
+CoreWeave = ["코어위브","CoreWeave","CRWV"]
+NVIDIA = ["엔비디아","NVIDIA","NVDA"]
+[topics]
+"AI 데이터센터" = ["데이터센터","데이터 센터","data center","datacenter","AI infrastructure"]
+"반도체" = ["반도체","semiconductor","chipmaker","GPU"]
+"기업 자금 조달" = ["자금 조달","자금조달","유상증자","회사채","전환사채","financing","fundraising","debt offering"]
+"퀀트 전략" = ["퀀트","quantitative","factor investing","backtest"]
+
+[[sources]]
+id="sbs"
+publisher="SBS"
+adapter="rss"
+url="https://news.sbs.co.kr/news/newsflashRssFeed.do?plink=RSSREADER"
+lang="ko"
+rule="marker"
+marker='^\s*\[속보\]'
+verification="최신 RSS 102건 수신, 표본 내 제목 접두 표식 0건"
+
+[[sources]]
+id="bbc"
+publisher="BBC"
+adapter="rss"
+url="https://feeds.bbci.co.uk/news/rss.xml"
+lang="en"
+rule="marker"
+category_markers=["breaking", "breaking news"]
+marker='(?i)^\s*(?:\[breaking(?: news)?\]|breaking(?: news)?\s*[:：–—-])'
+verification="RSS 36건 수신, 표본 내 표식 0건"
+
+[[sources]]
+id="sky"
+publisher="Sky News"
+adapter="rss"
+url="https://feeds.skynews.com/feeds/rss/home.xml"
+lang="en"
+rule="marker"
+category_markers=["breaking", "breaking news"]
+marker='(?i)^\s*(?:\[breaking(?: news)?\]|breaking(?: news)?\s*[:：–—-])'
+verification="RSS 6건 수신, 표본 내 표식 0건"
+
+[[sources]]
+id="wp"
+publisher="The Washington Post"
+adapter="imap"
+lang="en"
+rule="dedicated"
+enabled=false
+verification="설정 필요 · Breaking News Alerts 전용 구독과 라벨, 실제 발신 주소"
+
+[[sources]]
+id="bbcx"
+publisher="BBC"
+adapter="fx"
+handle="BBCBreaking"
+role="속보 전용 언론"
+lang="en"
+rule="dedicated"
+enabled=false
+verification="타임라인 수신, since 경계 HTTP 404 · 페이지 재시도 성공 · 기본 비활성"
+
+[[sources]]
+id="dart"
+publisher="금융감독원 OpenDART"
+adapter="dart"
+kind="공시"
+lang="ko"
+rule="none"
+enabled=false
+verification="설정 필요 · DART_KEY"
+
+[[sources]]
+id="sec-nvidia"
+publisher="SEC EDGAR"
+adapter="rss"
+kind="공시"
+lang="en"
+company="NVIDIA"
+rule="none"
+url="https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001045810&owner=exclude&count=40&output=atom"
+enabled=false
+verification="설정 필요 · SEC_USER_AGENT에 운영자 연락처"
+
+[[sources]]
+id="quant"
+publisher="arXiv q-fin"
+adapter="rss"
+kind="논문"
+lang="en"
+rule="none"
+url="https://rss.arxiv.org/rss/q-fin"
+enabled=false
+verification="공개 RSS 응답 정상 · 표본 0건"
+
+# 기업 IR 또는 뉴스룸은 공식 RSS/Atom 주소로 [[sources]]를 추가한다.
+# adapter="rss", kind="IR", company="CoreWeave", rule="none"
+
+[adjacent_topics]
+"반도체" = ["AI 데이터센터"]
+"AI 데이터센터" = ["반도체", "기업 자금 조달"]
+"기업 자금 조달" = ["AI 데이터센터", "퀀트 전략"]
+"퀀트 전략" = ["기업 자금 조달"]
+
+[[sources]]
+id="nvidia-newsroom"
+publisher="NVIDIA"
+adapter="rss"
+role="기업 공식 발표"
+company="NVIDIA"
+kind="기업 발표"
+lang="en"
+rule="none"
+url="https://nvidianews.nvidia.com/releases.xml"
+enabled=true
+verification="공식 뉴스룸 RSS 20건 수신"
+
+[translation]
+names=[]
