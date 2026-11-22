@@ -12,6 +12,7 @@ from getpass import getpass
 
 import requests
 
+from . import review
 from .bot import LABELS, poll, translation_step
 from .core import KST, render
 from .delivery import deliver
@@ -164,6 +165,41 @@ class Telegram:
         if callback:
             response = "등록 사용자 전용입니다."
             if callback["from"]["id"] == self.owner:
+                data = callback.get("data", "")
+                rm = re.fullmatch(
+                    r"rv:(\d+):(\d+):([01]):(up|down|undo|prev|next|toggle):(\d+)", data
+                )
+                if rm:
+                    slot, page, original = int(rm[1]), int(rm[2]), bool(int(rm[3]))
+                    action, n = rm[4], int(rm[5])
+                    db = self.store.db
+                    if action in ("up", "down", "undo"):
+                        if not db.execute(
+                            "select 1 from review_items where slot=? and item=? and pos>=? and pos<?",
+                            (
+                                slot,
+                                n,
+                                page * review.PAGE_SIZE,
+                                (page + 1) * review.PAGE_SIZE,
+                            ),
+                        ).fetchone():
+                            return
+                        self.store.vote(self.owner, n, action)
+                    elif action == "toggle":
+                        original = not original
+                    else:
+                        page += 1 if action == "next" else -1
+                    msg = callback["message"]
+                    await self.call(
+                        "answerCallbackQuery", callback_query_id=callback["id"]
+                    )
+                    await self.call(
+                        "editMessageText",
+                        chat_id=msg["chat"]["id"],
+                        message_id=msg["message_id"],
+                        **review.payload(db, self.owner, slot, page, original),
+                    )
+                    return
                 m = re.fullmatch(
                     r"news:(\d+):(up|down|batch|undo)", callback.get("data", "")
                 )
@@ -184,11 +220,7 @@ class Telegram:
                             reply_markup={"inline_keyboard": []},
                         )
                     response = (
-                        (
-                            "묶음 선호를 기록했습니다. 전체 수신 중에는 계속 즉시 발송합니다."
-                            if self.store.cfg["settings"].get("collect_all")
-                            else "관심 자료만 묶어서 받습니다. 속보는 즉시 발송합니다."
-                        )
+                        "묶음 선호를 기록했습니다. 일반 기사는 12시와 20시에 발송합니다."
                         if m[2] == "batch"
                         else "평가를 반영했습니다."
                     )
@@ -206,7 +238,33 @@ class Telegram:
         arg = arg.strip()
         db = self.store.db
         if cmd in ("/start", "/help"):
-            reply = "/status 상태 · /scores 평가 성적표 · /sources 출처 실적 · /rate 번호 평가 다시 열기 · /recent 최근 속보 · /interests 관심사 · /add 이름 · /remove 이름 · /held 보류 후보 · /held 번호 평가 · /retry 번호 응답 유실 건 재발송"
+            reply = "/review 최근 뉴스 리뷰 · /status 상태 · /scores 평가 성적표 · /sources 출처 실적 · /rate 번호 평가 다시 열기 · /recent 최근 속보 · /interests 관심사 · /add 이름 · /remove 이름 · /held 보류 후보 · /held 번호 평가 · /retry 번호 응답 유실 건 재발송"
+        elif cmd == "/review":
+            if arg:
+                if not arg.isdecimal() or len(arg) > 12:
+                    reply = "/review 또는 /status에 표시된 /review 번호를 입력하세요."
+                    await self.call("sendMessage", chat_id=self.owner, text=reply)
+                    return
+                latest = db.execute(
+                    "select slot from reviews where slot=?", (int(arg),)
+                ).fetchone()
+            else:
+                latest = db.execute(
+                    "select slot from reviews order by slot desc limit 1"
+                ).fetchone()
+            if latest:
+                await self.call(
+                    "sendMessage",
+                    chat_id=self.owner,
+                    **review.payload(db, self.owner, latest[0], 0),
+                )
+                review.confirmed(db, latest[0], int(time.time()))
+                return
+            reply = (
+                "해당 리뷰가 없습니다."
+                if arg
+                else "첫 리뷰를 준비하고 있습니다. 한국시간 12시와 20시에 일반 기사를 모아 보냅니다."
+            )
         elif cmd == "/scores":
             reply = scorecard(db, self.owner)
         elif cmd == "/sources":
@@ -233,12 +291,19 @@ class Telegram:
             else:
                 reply = "닫힌 평가가 없습니다."
         elif cmd == "/status":
-            lines = [
-                "전체 수신 · 중복 정리"
-                if self.store.cfg["settings"].get("collect_all")
-                else "추천 수신"
-            ]
+            lines = ["속보 즉시 · 일반 기사 리뷰 12:00 / 20:00 KST"]
             lines += activity(db, int(time.time()))
+            waiting = db.execute(
+                "select count(*) from items where not urgent and state in ('ready','review_queued','retry')"
+            ).fetchone()[0]
+            lines.append(f"리뷰 대기 {waiting}건")
+            for (slot,) in db.execute(
+                "select slot from reviews where state='uncertain' order by slot desc limit 5"
+            ):
+                stamp = datetime.fromtimestamp(slot, KST).strftime("%m-%d %H:%M")
+                lines.append(
+                    f"{stamp} 리뷰 발송 응답 확인 필요 · 다시 열기 /review {slot}"
+                )
             if not os.getenv("TRANSLATOR_KEY", "").strip():
                 lines.append("해외 기사 번역 · 서버 내 영어→한국어 모델")
             for src in self.store.cfg["sources"]:
@@ -369,10 +434,38 @@ class Telegram:
                     (str(u["update_id"] + 1),),
                 )
 
+    async def review_step(self):
+        now = int(time.time())
+        db = self.store.db
+        review.prepare(db, now)
+        r = db.execute(
+            "select slot from reviews where state='pending' and due<=? order by slot limit 1",
+            (now,),
+        ).fetchone()
+        if not r:
+            return
+        slot = r[0]
+        body = review.payload(db, self.owner, slot, 0)
+        with db:
+            db.execute("update reviews set state='sending' where slot=?", (slot,))
+        try:
+            await self.call("sendMessage", chat_id=self.interest, **body)
+        except BotAPIError as exc:
+            state = (
+                "pending" if exc.status in (400, 401, 403, 404, 429) else "uncertain"
+            )
+            with db:
+                db.execute(
+                    "update reviews set state=?,due=? where slot=?",
+                    (state, now + 120, slot),
+                )
+            return
+        review.confirmed(db, slot, int(time.time()))
+
     async def send_step(self):
         # Bot API has no history lookup. Ambiguous requests require owner review.
         row = self.store.db.execute(
-            "select * from items where state in ('ready','retry') and due<=? order by urgent desc,id limit 1",
+            "select * from items where urgent and state in ('ready','retry') and due<=? order by id limit 1",
             (int(time.time()),),
         ).fetchone()
         if row and not row["ko"] and json.loads(row["data"])["lang"] != "ko":
@@ -386,8 +479,24 @@ class Telegram:
             await deliver(self.store, row, self, compact=True)
 
     async def run(self):
-        self.store.cfg["settings"].setdefault("collect_all", True)
+        self.store.cfg["settings"]["collect_all"] = True
+        self.store.db.executescript(review.SCHEMA)
+        with self.store.db:
+            self.store.db.execute(
+                "update reviews set state='uncertain' where state='sending'"
+            )
+            self.store.db.execute("""update items set state='translate',due=0 where not urgent and state in ('ready','retry')
+                                     and ko is null and json_extract(data,'$.lang')<>'ko'""")
+            if not os.getenv("TRANSLATOR_KEY", "").strip():
+                first = self.store.db.execute(
+                    "insert or ignore into meta values('opus_tc_big_v1','1')"
+                ).rowcount
+                if first:
+                    self.store.db.execute("""update items set state='translate',due=0,attempt=0,
+                        error=null,ko=null,translated=null where state in ('ready','retry','translate')
+                        and sent is null and json_extract(data,'$.lang')='en'""")
         self.store.recover_representatives(int(time.time()))
+        review.prepare(self.store.db, int(time.time()))
         with self.store.db:
             self.store.db.execute(
                 "update items set state='uncertain' where state='sending'"
@@ -411,15 +520,12 @@ class Telegram:
                     )
                 await asyncio.sleep(delay)
 
-        async def digest():
-            self.store.digest(int(time.time()))
-
         await asyncio.gather(
             repeat(1, self.updates),
             repeat(1, self.send_step),
             repeat(2, self.edit_step),
             repeat(1, translation_step, self.store),
-            repeat(15, digest),
+            repeat(10, self.review_step),
             *(
                 repeat(self.store.cfg["settings"]["poll_seconds"], poll, self.store, s)
                 for s in self.store.cfg["sources"]

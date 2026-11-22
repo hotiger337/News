@@ -123,6 +123,18 @@ class Improvements(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.s.item(1)["state"], "duplicate")
         self.assertEqual(self.s.item(2)["state"], "ready")
 
+    def test_breaking_alert_keeps_priority_over_review(self):
+        self.add(self.foreign, "Funding announcement", 2)
+        self.add(dict(self.news, rule="none"), "자금 조달 발표", 3)
+        self.s.recover_representatives(4)
+        self.assertEqual(self.s.item(1)["state"], "translate")
+        self.assertEqual(self.s.item(2)["state"], "duplicate")
+        self.url += "2"
+        self.add(dict(self.news, rule="none"), "반도체 투자 발표", 5, "b")
+        self.add(self.foreign, "Chip investment announced", 6, "b")
+        self.assertEqual(self.s.item(3)["state"], "duplicate")
+        self.assertEqual(self.s.item(4)["state"], "translate")
+
     async def test_bbc_regular_article_translated_before_send(self):
         from newsbot.bot import translation_step
 
@@ -134,8 +146,6 @@ class Improvements(unittest.IsolatedAsyncioTestCase):
         with patch("newsbot.bot.translate", return_value="새 반도체 공장 문 열어"):
             await translation_step(self.s)
         await self.bot.send_step()
-        lines = self.bot.call.await_args.kwargs["text"].splitlines()
-        self.assertEqual(lines[0], "새 반도체 공장 문 열어")
-        self.assertTrue(lines[1].startswith("BBC · "))
-        self.assertEqual(lines[-1], self.url)
-        self.assertEqual(len(lines), 3)
+        self.bot.call.assert_not_awaited()
+        self.assertEqual(self.s.item(1)["ko"], "새 반도체 공장 문 열어")
+        self.assertEqual(self.s.item(1)["state"], "ready")

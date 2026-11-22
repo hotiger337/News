@@ -31,8 +31,11 @@ def activity(db, now):
     else:
         lines.append("아직 발송된 기사 없음")
     pending = dict(db.execute("select state,count(*) from items group by state"))
+    outgoing = db.execute(
+        "select count(*) from items where urgent and state in ('ready','retry','sending')"
+    ).fetchone()[0]
     lines.append(
-        f"현재 번역 대기 {pending.get('translate', 0)} · 발송 대기 {sum(pending.get(k, 0) for k in ('ready', 'retry', 'sending'))} · 응답 확인 필요 {pending.get('uncertain', 0)}"
+        f"현재 번역 대기 {pending.get('translate', 0)} · 발송 대기 {outgoing} · 응답 확인 필요 {pending.get('uncertain', 0)}"
     )
     return lines
 
@@ -74,9 +77,9 @@ def scorecard(db, owner):
 
 def source_report(db, owner, now):
     rows = db.execute(
-        """select i.source,count(*) total,count(*) filter(where i.state='sent') delivered,
+        """select i.source,count(*) total,count(*) filter(where i.state in ('sent','reviewed')) delivered,
         count(*) filter(where i.state='duplicate') dup,count(*) filter(where v.content=1) likes,
-        count(*) filter(where i.state='sent' and not exists(select 1 from items d where d.related=i.id and d.state='duplicate' and d.source<>i.source)) sole
+        count(*) filter(where i.state in ('sent','reviewed') and not exists(select 1 from items d where d.related=i.id and d.state='duplicate' and d.source<>i.source)) sole
         from items i left join votes v on i.id=v.item and v.owner=? where i.found>=? and i.state!='baseline'
         group by i.source order by delivered desc,i.source""",
         (str(owner), now - 7 * 86400),

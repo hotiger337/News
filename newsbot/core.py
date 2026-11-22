@@ -275,7 +275,7 @@ class Store:
         for key in keys_for_story:
             match = self.db.execute(
                 """select i.* from story_keys k join items i on i.id=k.item
-                  where k.k=? and i.found>=? and i.state in ('sent','ready','sending','translate','uncertain','retry')
+                  where k.k=? and i.found>=? and i.state in ('sent','ready','sending','translate','uncertain','retry','reviewed','review_queued')
                   order by i.id desc limit 1""",
                 (key, now - 86400),
             ).fetchone()
@@ -295,19 +295,25 @@ class Store:
                 continue
             if first.get("detail") and item.detail and first["detail"] != item.detail:
                 continue
+            if (
+                urgent
+                and not match["urgent"]
+                and match["state"] not in ("translate", "ready", "retry")
+            ):
+                continue
             representative = match
             break
         replaced = None
-        if (
-            representative
-            and state != "translate"
-            and (
-                representative["state"] == "translate"
-                or (
-                    urgent
-                    and not representative["urgent"]
-                    and representative["state"] in ("ready", "retry")
-                )
+        if representative and (
+            (
+                state == "ready"
+                and representative["state"] == "translate"
+                and (urgent or not representative["urgent"])
+            )
+            or (
+                urgent
+                and not representative["urgent"]
+                and representative["state"] in ("translate", "ready", "retry")
             )
         ):
             replaced = representative["id"]
@@ -413,6 +419,7 @@ class Store:
             pairs = self.db.execute(
                 """select d.id,p.id from items d join items p on p.id=d.related
                 where d.state='duplicate' and p.state='translate' and d.found>=?
+                and (d.urgent or not p.urgent)
                 and json_extract(d.data,'$.lang')='ko' order by d.urgent desc,d.id""",
                 (now - 86400,),
             ).fetchall()
