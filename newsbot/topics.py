@@ -23,6 +23,14 @@ def rank(articles):
             ):
                 words.add(word)
         for word in words:
-            groups.setdefault(word, []).append(article["url"])
-    return [{"word": word, "count": len(urls), "urls": urls} for word, urls in
-            sorted(groups.items(), key=lambda entry: (-len(entry[1]), entry[0]))[:10] if len(urls) >= 2]
+            groups.setdefault(word, []).append(article)
+    ranked = []
+    for word, rows in groups.items():
+        titles = {re.sub(r"[^\w]", "", re.sub(r"^\s*\[(?:속보|종합\d*보?|단독|포토|영상|Breaking)\]\s*", "",
+                  row.get("originalTitle") or row["title"], flags=re.I)).casefold() for row in rows}
+        if len(titles) < 2:
+            continue
+        publishers = {re.sub(r"^연합뉴스 .+", "연합뉴스", row.get("source", "")) for row in rows}
+        ranked.append({"word": word, "count": len(titles), "articleCount": len(rows), "sourceCount": len(publishers),
+                       "urls": [row["url"] for row in rows]})
+    return sorted(ranked, key=lambda t: (-t["count"], -t["sourceCount"], t["word"]))[:10]

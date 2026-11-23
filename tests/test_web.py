@@ -27,7 +27,7 @@ class PersonalWeb(unittest.TestCase):
         self.assertEqual([a["id"] for a in page["articles"]], [1,5])
         self.assertEqual(page["articles"][0]["vote"], -1)
         self.assertEqual([a["id"] for a in page["breaking"]], [1])
-        self.assertEqual(page["topics"][0]["count"], 2)
+        self.assertEqual(page["topics"], [])  # 두 URL의 제목이 같은 전재 기사는 순위를 만들지 않는다.
         body = {"id":1, "url":page["articles"][0]["url"], "value":1}
         self.assertEqual(record_vote(self.s,100,body), {"value":1})
         rows = self.s.db.execute("select owner,item,content from votes").fetchall()

@@ -1,6 +1,7 @@
 """Loopback web UI for the same SQLite articles and ratings as the personal bot."""
 
 import json
+import os
 import re
 import sqlite3
 import time
@@ -10,8 +11,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from .core import Store
+from .core import Store, url_key
 from .topics import rank
+from .site_export import deliveries, public_article, public_sources
 
 
 def article_url(item):
@@ -21,7 +23,7 @@ def article_url(item):
     return None
 
 
-def live(db, owner, now):
+def live(db, owner, now, cfg=None):
     articles = []
     seen = set()
     for row in db.execute("""
@@ -43,7 +45,20 @@ def live(db, owner, now):
             "date": datetime.fromtimestamp(item["published"], timezone.utc).isoformat(),
             "vote": row["vote"], "breaking": bool(row["urgent"]),
         })
-    return {"articles": articles, "topics": rank(articles),
+    sources = public_sources(cfg or {})
+    channel = os.getenv("TELEGRAM_BREAKING_CHAT_ID") or owner
+    telegram = []
+    sent_by_id = {}
+    votes = dict(db.execute("select item,content from votes where owner=?", (str(owner),)))
+    for row in deliveries(db, channel, now - 7 * 86400, 0, now, recent=True):
+        public = public_article(row, sources)
+        if public:
+            sent_by_id[row["id"]] = public["deliveredAt"]
+            telegram.append(dict(public, id=row["id"], vote=votes.get(row["id"], 0), telegram=True))
+    for article in articles:
+        article["telegram"] = article["id"] in sent_by_id
+        article["deliveredAt"] = sent_by_id.get(article["id"])
+    return {"articles": articles, "telegramArticles": telegram, "topics": rank(articles),
             "breaking": [a for a in articles if a["breaking"]],
             "asof": datetime.fromtimestamp(now, timezone.utc).isoformat(), "snapshot": False,
             "sources": len({a["source"] for a in articles}), "voting": True, "feed": True}
@@ -56,7 +71,11 @@ def record_vote(store, owner, body):
     if type(n) is not int or not 0 < n <= 2**63-1 or type(value) is not int or value not in (-1, 0, 1):
         raise ValueError
     row = store.item(n)
-    if not row or not isinstance(url, str) or article_url(json.loads(row["data"])) != url:
+    if not row or not isinstance(url, str):
+        raise LookupError
+    item = json.loads(row["data"])
+    originals = [u for u in [item.get("post"), *item.get("links", [])] if u]
+    if url not in originals and url not in {url_key(u) for u in originals}:
         raise LookupError
     store.vote(owner, n, {-1: "down", 0: "undo", 1: "up"}[value])
     return {"value": value}
@@ -91,7 +110,7 @@ def serve(database, cfg, owner):
             if path == "/api/live":
                 with closing(sqlite3.connect(database)) as db:
                     db.row_factory = sqlite3.Row
-                    result = live(db, owner, int(time.time()))
+                    result = live(db, owner, int(time.time()), cfg)
                 return self.respond(200, result)
             if path == "/api/archive":
                 days = [p.relative_to(root).with_suffix("").as_posix().replace("/", "-")
