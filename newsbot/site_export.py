@@ -91,6 +91,22 @@ def push(rows, token):
         raise ValueError("Site가 전송 묶음을 확인하지 않았습니다.")
 
 
+async def refresh_site():
+    """Prompt due RSS sources while the private site has no active readers."""
+    token = os.getenv("NEWS_SITE_TOKEN", "").strip()
+    if not token:
+        return
+
+    def refresh():
+        with requests.get(ENDPOINT.rsplit("/", 1)[0] + "/live",
+                          headers={"OAI-Sites-Authorization": "Bearer " + token},
+                          timeout=(5, 65), allow_redirects=False, stream=True) as response:
+            if response.status_code != 200:
+                raise ValueError("사이트 RSS 갱신 실패")
+
+    await asyncio.to_thread(refresh)
+
+
 async def sync_step(store, channel):
     token = os.getenv("NEWS_SITE_TOKEN", "").strip()
     if not token:
