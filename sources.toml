@@ -458,6 +458,7 @@ verification="공식 영문 피드 50건 수신"
 [social]
 enabled = true
 hours_kst = [12, 20]
-regions = ["KR", "US"]
-verification_model = "gpt-5-mini"
-verification_domains = ["reuters.com", "apnews.com", "bbc.com", "yonhapnews.co.kr", "yna.co.kr", "bok.or.kr", "go.kr", "sec.gov", "nasa.gov", "who.int", "nature.com", "science.org", "smithsonianmag.com", "billboard.com", "olympics.com"]
+# NASA, Kurzgesagt, Google for Developers, Olympics
+youtube_channels = ["UCLA_DiR1FfKNvjuUpBHmylQ", "UCsXVk37bltHxD1rDPwtNM8Q", "UC_x5XG1OV2P6uZZ5FSM9Ttw", "UCi7Zk9baY1tvdlgxIML8MXg"]
+evidence_domains = ["bbc.com", "bbc.co.uk", "news.sky.com", "npr.org", "yna.co.kr", "sbs.co.kr", "abc.net.au", "dw.com", "nvidianews.nvidia.com", "fullfact.org"]
+fact_check_feeds = ["https://fullfact.org/feed/"]

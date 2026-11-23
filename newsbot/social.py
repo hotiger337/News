@@ -1,73 +1,45 @@
 """Twice-daily discovery reports for the existing Discord interest channel."""
 
 import asyncio
-import html
 import json
-import logging
-import os
 import random
-import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 
 import discord
-import requests
 
-from .verification import verify
+from .verification import collect, safe_page
 from .core import KST
-from .sources import error_label, required
 
 
-def youtube(queries, regions, now):
-    key = required("YOUTUBE_API_KEY")
-    candidates = []
-
-    def fetch(endpoint, **params):
-        response = requests.get(
-            "https://www.googleapis.com/youtube/v3/" + endpoint,
-            params={"key": key, "part": "snippet", "maxResults": 50, **params},
-            timeout=15,
-        )
-        response.raise_for_status()
-        return response.json()["items"]
-
-    for region in regions:
-        for item in fetch("videos", chart="mostPopular", regionCode=region):
-            candidates.append((item["id"], item["snippet"], False))
-    since = (now - timedelta(days=3)).astimezone(timezone.utc).isoformat()
-    if queries:
-        for item in fetch("search", type="video", order="viewCount",
-                          publishedAfter=since, q="|".join(queries)):
-            candidates.append((item["id"]["videoId"], item["snippet"], True))
-    return [("YouTube", "https://www.youtube.com/watch?v=" + uid,
-             html.unescape(info["title"]), info.get("channelTitle", ""), related)
-            for uid, info, related in candidates if re.fullmatch(r"[\w-]{11}", uid)]
+# Defaults also support an existing server-side configuration from the API version.
+DEFAULT_DOMAINS = ["bbc.com", "bbc.co.uk", "news.sky.com", "npr.org", "yna.co.kr",
+                   "sbs.co.kr", "abc.net.au", "dw.com", "nvidianews.nvidia.com", "fullfact.org"]
+DEFAULT_CHANNELS = ["UCLA_DiR1FfKNvjuUpBHmylQ", "UCsXVk37bltHxD1rDPwtNM8Q",
+                    "UC_x5XG1OV2P6uZZ5FSM9Ttw", "UCi7Zk9baY1tvdlgxIML8MXg"]
 
 
-def reddit(queries):
-    headers = {"User-Agent": required("REDDIT_USER_AGENT")}
-    token = requests.post(
-        "https://www.reddit.com/api/v1/access_token",
-        auth=(required("REDDIT_CLIENT_ID"), required("REDDIT_CLIENT_SECRET")),
-        headers=headers, data={"grant_type": "client_credentials"}, timeout=15,
-    )
-    token.raise_for_status()
-    headers["Authorization"] = "Bearer " + token.json()["access_token"]
-    feeds = [("r/all/rising", {}, False)]
-    if queries:
-        feeds.append(("search", {"q": " OR ".join(queries), "sort": "hot",
-                                 "t": "week"}, True))
-    results = []
-    for endpoint, params, related in feeds:
-        response = requests.get("https://oauth.reddit.com/" + endpoint,
-                                headers=headers, params={"limit": 75, **params}, timeout=15)
-        response.raise_for_status()
-        for entry in response.json()["data"]["children"]:
-            post = entry["data"]
-            if post.get("over_18") or post.get("stickied") or not re.fullmatch(r"[a-z0-9]+", post["id"]):
-                continue
-            results.append(("Reddit", "https://www.reddit.com/comments/" + post["id"],
-                            html.unescape(post["title"]), post["subreddit"], related))
-    return results
+def recent_pages(store, domains, now):
+    rss = {s["id"] for s in store.cfg["sources"] if s["adapter"] == "rss"}
+    pages = {}
+    counts = {}
+    for row in store.db.execute(
+        "select source,data from items where found>=? order by found desc,id desc",
+        (now - 3 * 86400,),
+    ):
+        source = row["source"]
+        if source not in rss or counts.get(source, 0) >= 8:
+            continue
+        item = json.loads(row["data"])
+        if not now - 3 * 86400 <= item["published"] <= now:
+            continue
+        for url in item["links"]:
+            if url not in pages and safe_page(url, domains):
+                pages[url] = item["title"]
+                counts[source] = counts.get(source, 0) + 1
+                break
+        if len(pages) >= 64:
+            break
+    return list(pages.items())
 
 
 def select(entries, interests, cfg, seen, rng, limit=2):
@@ -79,12 +51,12 @@ def select(entries, interests, cfg, seen, rng, limit=2):
             if names & registered:
                 aliases.update(names)
     related, broad = {}, {}
-    for platform, url, title, source, targeted in entries:
+    for platform, url, title, source, evidence in entries:
         if url in seen:
             continue
         matched = any(term in (title + " " + source).casefold() for term in aliases)
-        item = (platform, url, title)
-        if targeted or matched:
+        item = (platform, url, title, evidence)
+        if matched:
             related.setdefault(url, item)
         else:
             broad.setdefault(url, item)
@@ -125,23 +97,15 @@ async def report(bot):
         return
     if not row:
         interests = [r[0] for r in db.execute("select name from interests order by name")]
-        queries = random.sample(interests, min(4, len(interests)))
-        results = await asyncio.gather(
-            asyncio.to_thread(youtube, queries, store.cfg["social"]["regions"], now),
-            asyncio.to_thread(reddit, queries), return_exceptions=True,
-        )
-        entries = []
-        for platform, result in zip(("YouTube", "Reddit"), results):
-            if isinstance(result, Exception):
-                logging.warning("소셜 브리핑 %s: %s", platform, error_label(result))
-            else:
-                entries.extend(result)
-        if not entries:
-            return
+        cfg = store.cfg["social"]
+        domains = cfg.get("evidence_domains", DEFAULT_DOMAINS)
+        channels = cfg.get("youtube_channels", DEFAULT_CHANNELS)
+        pages = recent_pages(store, domains, int(now.timestamp()))
+        feeds = cfg.get("fact_check_feeds", ["https://fullfact.org/feed/"])
+        entries = await asyncio.to_thread(collect, pages, channels, domains, feeds)
         seen = {url for r in db.execute("select urls from social_reports")
                 for url in json.loads(r[0])}
-        shortlist = select(entries, interests, store.cfg, seen, random, limit=5)
-        groups = await asyncio.to_thread(verify, shortlist, store.cfg["social"])
+        groups = select(entries, interests, store.cfg, seen, random)
         urls = [item[1] for group in groups for item in group]
         if not urls:
             with db:
