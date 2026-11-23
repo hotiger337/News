@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 import discord
 from discord import app_commands
 
+from . import social
 from .core import KST
 from .delivery import deliver
 from .sources import ADAPTERS, enabled, error_label, required, translate
@@ -335,6 +336,8 @@ class NewsBot(discord.Client):
         start(translation_step, 1, self.store)
         start(self.send_step, 1)
         start(self.digest_step, 15)
+        if self.store.cfg.get("social", {}).get("enabled"):
+            start(social.report, 300, self)
 
     async def send_step(self):
         row = self.store.db.execute(

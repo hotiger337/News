@@ -454,3 +454,10 @@ rule="marker"
 marker='(?i)^\s*(?:\[breaking(?: news)?\]|breaking(?: news)?\s*[:：–—-])'
 category_markers=["breaking","breaking news"]
 verification="공식 영문 피드 50건 수신"
+
+[social]
+enabled = true
+hours_kst = [12, 20]
+regions = ["KR", "US"]
+verification_model = "gpt-5-mini"
+verification_domains = ["reuters.com", "apnews.com", "bbc.com", "yonhapnews.co.kr", "yna.co.kr", "bok.or.kr", "go.kr", "sec.gov", "nasa.gov", "who.int", "nature.com", "science.org", "smithsonianmag.com", "billboard.com", "olympics.com"]
