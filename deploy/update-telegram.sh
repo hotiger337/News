@@ -17,7 +17,7 @@ fi
 "$app/.venv/bin/python" -c 'import sys,tomllib; tomllib.load(open(sys.argv[1],"rb"))' "$tmpdir/merged"
 sudo "$app/.venv/bin/pip" install --only-binary=:all: -r requirements-translation.txt
 sudo python3 deploy/install-translation-model.py "$app/models/opus-tc-big-en-ko-v1"
-sudo install -m 644 newsbot/*.py "$app/newsbot/"
+sudo install -m 644 newsbot/*.py newsbot/web_index.html "$app/newsbot/"
 sudo install -m 644 "$tmpdir/merged" "$app/sources.toml"
 sudo install -d -m 755 /etc/systemd/system/newsbot.service.d
 printf '[Service]\nExecStart=\nExecStart=/opt/newsbot/.venv/bin/python -m newsbot run-telegram\n' > "$tmpdir/telegram.conf"

@@ -21,7 +21,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument(
         "command",
-        choices=["run", "run-telegram", "probe", "backup", "compare", "telegram-id"],
+        choices=["run", "run-telegram", "probe", "backup", "compare", "telegram-id", "web"],
     )
     p.add_argument("argument", nargs="?")
     args = p.parse_args()
@@ -32,6 +32,13 @@ def main():
         return
     cfg = tomllib.loads(Path(os.getenv("NEWS_CONFIG", "sources.toml")).read_text())
     dbpath = Path(os.getenv("NEWS_DB", "state/news.sqlite3")).resolve()
+    if args.command == "web":
+        from .web import serve
+
+        if not dbpath.is_file():
+            p.error("NEWS_DB에 기존 뉴스 봇 데이터베이스 경로를 지정하세요.")
+        serve(dbpath, cfg, int(required("TELEGRAM_OWNER_ID")))
+        return
     if args.command == "probe":
         selected = [
             s

@@ -14,6 +14,7 @@ import requests
 
 from . import review
 from .bot import LABELS, poll, translation_step
+from .archive import archive_step
 from .core import KST, render
 from .delivery import deliver
 from .reports import activity, scorecard, source_report
@@ -526,6 +527,7 @@ class Telegram:
             repeat(2, self.edit_step),
             repeat(1, translation_step, self.store),
             repeat(10, self.review_step),
+            repeat(300, archive_step, self.store),
             *(
                 repeat(self.store.cfg["settings"]["poll_seconds"], poll, self.store, s)
                 for s in self.store.cfg["sources"]

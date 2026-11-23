@@ -9,6 +9,7 @@ import discord
 from discord import app_commands
 
 from . import social
+from .archive import archive_step
 from .core import KST
 from .delivery import deliver
 from .sources import ADAPTERS, enabled, error_label, required, translate
@@ -336,6 +337,7 @@ class NewsBot(discord.Client):
         start(translation_step, 1, self.store)
         start(self.send_step, 1)
         start(self.digest_step, 15)
+        start(archive_step, 300, self.store)
         if self.store.cfg.get("social", {}).get("enabled"):
             start(social.report, 300, self)
 
