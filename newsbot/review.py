@@ -1,7 +1,7 @@
-"""Persistent KST review windows and per-article Telegram keyboards."""
+"""Keep previously delivered Telegram reviews readable and rateable."""
 
 import json
-from datetime import datetime, timedelta
+from datetime import datetime
 from html import escape
 
 from .core import KST
@@ -13,44 +13,15 @@ CREATE TABLE IF NOT EXISTS review_items(slot INTEGER,pos INTEGER,item INTEGER UN
 """
 
 
-def last_slot(now):
-    local = datetime.fromtimestamp(now, KST)
-    if local.hour < 12:
-        local -= timedelta(days=1)
-        hour = 20
-    else:
-        hour = 20 if local.hour >= 20 else 12
-    return int(local.replace(hour=hour, minute=0, second=0, microsecond=0).timestamp())
-
-
-def prepare(db, now):
-    slot = last_slot(now)
+def retire_schedule(db):
+    """Stop unsent reviews without losing evidence of earlier deliveries or votes."""
+    db.executescript(SCHEMA)
     with db:
-        record = db.execute("select v from meta where k='last_review_slot'").fetchone()
-        if not record:
-            db.execute("insert into meta values('last_review_slot',?)", (str(slot),))
-            return
-        if int(record[0]) >= slot:
-            return
-        db.execute("update meta set v=? where k='last_review_slot'", (str(slot),))
-        rows = db.execute(
-            """select i.id from items i left join predictions p on i.id=p.item
-            where not i.urgent and i.state in ('ready','retry') and i.found<=?
-            and (json_extract(i.data,'$.lang')='ko' or i.ko is not null)
-            order by coalesce(p.score,0) desc,i.id desc""",
-            (slot,),
-        ).fetchall()
-        if not rows:
-            return
-        db.execute("insert into reviews(slot,state) values(?,'pending')", (slot,))
-        db.executemany(
-            "insert into review_items values(?,?,?)",
-            [(slot, pos, r[0]) for pos, r in enumerate(rows)],
-        )
-        db.execute(
-            "update items set state='review_queued' where id in (select item from review_items where slot=?)",
-            (slot,),
-        )
+        db.execute("update reviews set state='uncertain' where state='sending'")
+        db.execute("update reviews set state='cancelled' where state='pending'")
+        db.execute("""update items set state='ready' where not urgent and state='review_queued'
+            and id in (select x.item from review_items x join reviews r on r.slot=x.slot
+                       where r.state='cancelled')""")
 
 
 def payload(db, owner, slot, page, original=False):
@@ -116,13 +87,3 @@ def payload(db, owner, slot, page, original=False):
         reply_markup={"inline_keyboard": keys + [nav]},
         link_preview_options={"is_disabled": True},
     )
-
-
-def confirmed(db, slot, now):
-    with db:
-        db.execute("update reviews set state='sent' where slot=?", (slot,))
-        db.execute(
-            """update items set state='reviewed',sent=? where state='review_queued'
-            and id in (select item from review_items where slot=?)""",
-            (now, slot),
-        )

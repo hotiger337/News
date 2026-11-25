@@ -13,29 +13,31 @@ def activity(db, now):
         from items where found>=? and state!='baseline'""",
         (cutoff,),
     ).fetchone()
-    sent = db.execute("select count(*) from items where sent>=?", (cutoff,)).fetchone()[
-        0
-    ]
-    lines = [f"최근 1시간 · 새 글 {new}건 · 발송 {sent}건 · 중복 {duplicates}건"]
+    sent = db.execute(
+        "select count(*) from items where urgent and sent>=?", (cutoff,)
+    ).fetchone()[0]
+    lines = [f"최근 1시간 · 새 글 {new}건 · 속보 발송 {sent}건 · 중복 {duplicates}건"]
     if not new:
         lines.append("최근 1시간 새 글 없음")
     last = db.execute(
-        "select * from items where sent is not null order by sent desc,id desc limit 1"
+        "select * from items where urgent and sent is not null order by sent desc,id desc limit 1"
     ).fetchone()
     if last:
         stamp = datetime.fromtimestamp(last["sent"], KST).strftime("%m-%d %H:%M")
         lines.append(
-            f"마지막 발송 {stamp} · {last['publisher']} · "
+            f"마지막 속보 발송 {stamp} · {last['publisher']} · "
             + (last["ko"] or json.loads(last["data"])["title"])[:80]
         )
     else:
-        lines.append("아직 발송된 기사 없음")
-    pending = dict(db.execute("select state,count(*) from items group by state"))
+        lines.append("아직 발송된 속보 없음")
+    pending = dict(
+        db.execute("select state,count(*) from items where urgent group by state")
+    )
     outgoing = db.execute(
         "select count(*) from items where urgent and state in ('ready','retry','sending')"
     ).fetchone()[0]
     lines.append(
-        f"현재 번역 대기 {pending.get('translate', 0)} · 발송 대기 {outgoing} · 응답 확인 필요 {pending.get('uncertain', 0)}"
+        f"속보 번역 대기 {pending.get('translate', 0)} · 발송 대기 {outgoing} · 응답 확인 필요 {pending.get('uncertain', 0)}"
     )
     return lines
 

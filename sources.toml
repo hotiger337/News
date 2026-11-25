@@ -7,6 +7,73 @@ instant_threshold = 4.0
 max_age_hours = 72
 initial_interests = ["AI 데이터센터","반도체","기업 자금 조달","퀀트 전략"]
 
+# 텔레그램에서 추가로 읽는 공식 창구. 첫 조회분은 기준점으로만 기록한다.
+[[telegram_sources]]
+id="yna-latest"
+publisher="연합뉴스"
+adapter="rss"
+url="https://www.yna.co.kr/rss/news.xml"
+lang="ko"
+rule="marker"
+marker='^\s*\[속보\]'
+verification="2026-11-25 공식 최신 RSS 120건 중 [속보] 1건 확인"
+
+[[telegram_sources]]
+id="jtbc-flash"
+publisher="JTBC"
+adapter="rss"
+url="https://news-ex.jtbc.co.kr/v1/get/rss/newsflesh"
+lang="ko"
+rule="marker"
+marker='^\s*\[속보\]'
+verification="2026-11-25 공식 속보 RSS 4건 중 [속보] 1건 확인"
+
+[[telegram_sources]]
+id="yonhapnews-tv"
+publisher="연합뉴스TV"
+adapter="rss"
+url="https://www.yonhapnewstv.co.kr/category/news/headline/feed/"
+lang="ko"
+rule="marker"
+marker='^\s*\[속보\]'
+verification="2026-11-25 공식 헤드라인 RSS 5건 중 [속보] 1건 확인"
+
+[[telegram_sources]]
+id="yonhap-en"
+publisher="Yonhap News Agency"
+adapter="rss"
+url="https://en.yna.co.kr/RSS/news.xml"
+lang="en"
+rule="marker"
+marker='^\s*\(URGENT\)'
+verification="2026-11-25 공식 영문 RSS 94건 중 (URGENT) 4건 확인"
+
+[[telegram_sources]]
+id="ap-bluesky"
+country="미국"
+publisher="AP통신"
+role="언론사 공식 계정"
+adapter="bluesky"
+handle="apnews.com"
+did="did:plc:a67zdrt4nl2tv2qojpngogbq"
+lang="en"
+rule="marker"
+marker='(?i)^\s*breaking\s*:'
+verification="2026-11-25 공식 계정 공개 타임라인 첫 100개 중 BREAKING: 원글 4건, 후속 페이지 수신"
+
+[[telegram_sources]]
+id="nyt-bluesky"
+country="미국"
+publisher="뉴욕타임스"
+role="언론사 공식 계정"
+adapter="bluesky"
+handle="nytimes.com"
+did="did:plc:eclio37ymobqex2ncko63h4r"
+lang="en"
+rule="marker"
+marker='(?i)^\s*breaking news\s*:'
+verification="2026-11-25 공식 계정 공개 타임라인 첫 100개 중 Breaking News: 원글 15건, 후속 페이지 수신"
+
 [weights]
 company_kind = 3
 topic = 2

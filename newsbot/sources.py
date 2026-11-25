@@ -14,7 +14,7 @@ from urllib.parse import quote, urlsplit
 import feedparser
 import requests
 
-from .core import KST, Item
+from .core import KST, Item, breaking
 
 
 def enabled(source):
@@ -112,6 +112,103 @@ def rss(s, old):
         )
     ids = [i.uid for i in entries]
     return entries, {"ids": ids or (old or {}).get("ids", [])}, overlap(old, ids)
+
+
+def bluesky_item(s, entry):
+    post = entry["post"]
+    record = post["record"]
+    if entry.get("reason") or record.get("reply") or post["author"]["did"] != s["did"]:
+        return None
+    if post["author"]["handle"].casefold() != s["handle"].casefold():
+        raise ValueError("publisher handle changed")
+    uri = post["uri"]
+    prefix = f"at://{s['did']}/app.bsky.feed.post/"
+    key = uri.removeprefix(prefix)
+    if not uri.startswith(prefix) or not re.fullmatch(r"[\w.~-]+", key):
+        raise ValueError("invalid publisher post URI")
+    stamp = datetime.fromisoformat(record["createdAt"])
+    if stamp.tzinfo is None:
+        raise ValueError("missing Bluesky timezone")
+    embed = record.get("embed", {})
+    media = embed.get("media", embed)
+    links = [media.get("external", {}).get("uri")]
+    raw = record["text"].encode("utf-8")
+    text = record["text"]
+    for facet in record.get("facets", []):
+        targets = [
+            f["uri"]
+            for f in facet["features"]
+            if f["$type"] == "app.bsky.richtext.facet#link"
+        ]
+        links.extend(targets)
+        # A trailing displayed URL can be truncated. Keep its full target in the footer.
+        index = facet["index"]
+        if targets and index["byteEnd"] == len(raw):
+            label = raw[index["byteStart"] :].decode()
+            if re.fullmatch(r"(?:https?://|www\.)\S+", label):
+                text = raw[: index["byteStart"]].decode()
+    return Item(
+        uri,
+        text.strip(),
+        int(stamp.timestamp()),
+        urls(links),
+        post=f"https://bsky.app/profile/{s['did']}/post/{key}",
+    )
+
+
+def bluesky(s, old):
+    """Read original posts from the pinned AppView author and checkpoint even quiet polls."""
+    params = {
+        "actor": s["did"],
+        "filter": "posts_no_replies",
+        "includePins": "false",
+        "limit": 100,
+    }
+    previous = set((old or {}).get("ids", []))
+    head = []
+    alerts = {}
+    cursors = set()
+    latest = (old or {}).get("latest", 0)
+    matched = False
+    gap = ""
+    for _ in range(20):
+        response = requests.get(
+            "https://public.api.bsky.app/xrpc/app.bsky.feed.getAuthorFeed",
+            params=params,
+            timeout=20,
+        )
+        response.raise_for_status()
+        page = response.json()
+        if not isinstance(page["feed"], list):
+            raise ValueError("invalid author feed")
+        for entry in page["feed"]:
+            item = bluesky_item(s, entry)
+            if not item:
+                continue
+            if len(head) < 100 and item.uid not in head:
+                head.append(item.uid)
+            latest = max(latest, item.published)
+            known = item.uid in previous
+            if (not matched or known) and breaking(s, item):
+                alerts[item.uid] = item
+            matched |= known
+        if not previous or matched:
+            break
+        cursor = page.get("cursor")
+        if not cursor or cursor in cursors:
+            gap = "이전 Bluesky 게시물과 겹치지 않음 · 일부 누락 가능"
+            break
+        cursors.add(cursor)
+        params["cursor"] = cursor
+    else:
+        gap = "Bluesky 20페이지 복구 한도 · 일부 누락 가능"
+
+    entries = list(alerts.values())
+    if gap:
+        # All former anchors may have been deleted. Do not replay the publisher's history.
+        entries = [item for item in entries if item.published >= old["latest"]]
+    checkpoint = {"ids": head or (old or {}).get("ids", []), "latest": latest}
+    return entries, checkpoint, gap
 
 
 def xitem(s, x):
@@ -314,7 +411,7 @@ def dart(s, old):
     return entries, {"ts": now}, ""
 
 
-ADAPTERS = {"rss": rss, "imap": imap, "dart": dart, "fx": fx}
+ADAPTERS = {"rss": rss, "imap": imap, "dart": dart, "fx": fx, "bluesky": bluesky}
 
 
 def error_label(exc):

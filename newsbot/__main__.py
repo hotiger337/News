@@ -31,6 +31,9 @@ def main():
         identify()
         return
     cfg = tomllib.loads(Path(os.getenv("NEWS_CONFIG", "sources.toml")).read_text())
+    telegram = args.command == "run-telegram" or bool(os.getenv("TELEGRAM_BOT_TOKEN"))
+    if telegram or args.command in ("probe", "web"):
+        cfg["sources"].extend(cfg.get("telegram_sources", []))
     dbpath = Path(os.getenv("NEWS_DB", "state/news.sqlite3")).resolve()
     if args.command == "web":
         from .web import serve
@@ -71,31 +74,31 @@ def main():
             src.backup(dest)
         return
     dbpath.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    lock = open(str(dbpath) + ".lock", "a")
-    if args.command in ("run", "run-telegram"):
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    store = Store(dbpath, cfg)
-    if args.command == "compare":
-        # 동일 후보·평가 스냅샷에서 두 설정의 점수와 기여도를 나란히 계산한다.
-        other = tomllib.loads(Path(args.argument).read_text())
-        now = int(time.time())
-        for row in store.db.execute(
-            "select * from items where urgent=0 and state!='baseline' order by id"
-        ):
-            store.cfg = cfg
-            a = store.score(row, now)
-            store.cfg = other
-            b = store.score(row, now)
-            print(
-                json.dumps(dict(id=row["id"], old=a[:2], new=b[:2]), ensure_ascii=False)
-            )
-        return
-    if args.command == "run-telegram" or os.getenv("TELEGRAM_BOT_TOKEN"):
-        from .telegram import Telegram
+    with open(str(dbpath) + ".lock", "a") as lock:
+        if args.command in ("run", "run-telegram"):
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        store = Store(dbpath, cfg)
+        if args.command == "compare":
+            # 동일 후보·평가 스냅샷에서 두 설정의 점수와 기여도를 나란히 계산한다.
+            other = tomllib.loads(Path(args.argument).read_text())
+            now = int(time.time())
+            for row in store.db.execute(
+                "select * from items where urgent=0 and state!='baseline' order by id"
+            ):
+                store.cfg = cfg
+                a = store.score(row, now)
+                store.cfg = other
+                b = store.score(row, now)
+                print(
+                    json.dumps(dict(id=row["id"], old=a[:2], new=b[:2]), ensure_ascii=False)
+                )
+            return
+        if telegram:
+            from .telegram import Telegram
 
-        asyncio.run(Telegram(store).run())
-        return
-    NewsBot(store).run(required("DISCORD_TOKEN"), log_handler=None)
+            asyncio.run(Telegram(store).run())
+            return
+        NewsBot(store).run(required("DISCORD_TOKEN"), log_handler=None)
 
 
 if __name__ == "__main__":

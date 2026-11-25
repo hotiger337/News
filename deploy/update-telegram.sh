@@ -6,11 +6,22 @@ app=/opt/newsbot
 tmpdir=$(mktemp -d)
 trap 'rm -rf "$tmpdir"' EXIT
 "$app/.venv/bin/python" -m unittest discover -s tests -q
-# Preserve local settings via a three-way merge with the previously shipped config.
-git show 4bdac0d:sources.toml > "$tmpdir/base"
-if cmp -s sources.toml "$app/sources.toml"; then
+# Keep local changes, including installations that skipped a release.
+base="$app/.sources-shipped.toml"
+if [[ ! -f "$base" ]]; then
+    base="$tmpdir/base"
+    git show 495c307:sources.toml > "$base"
+    installed=$(git hash-object "$app/sources.toml")
+    while read -r rev; do
+        if [[ "$(git rev-parse "$rev:sources.toml")" == "$installed" ]]; then
+            base="$app/sources.toml"
+            break
+        fi
+    done < <(git log --format=%H -- sources.toml)
+fi
+if cmp -s sources.toml "$app/sources.toml" || cmp -s "$base" "$app/sources.toml"; then
     cp sources.toml "$tmpdir/merged"
-elif ! git merge-file -p "$app/sources.toml" "$tmpdir/base" sources.toml > "$tmpdir/merged"; then
+elif ! git merge-file -p "$app/sources.toml" "$base" sources.toml > "$tmpdir/merged"; then
     echo '서버 출처 설정과 새 기본값이 충돌합니다. 운영 파일을 보존했습니다.' >&2
     exit 1
 fi
@@ -19,6 +30,7 @@ sudo "$app/.venv/bin/pip" install --only-binary=:all: -r requirements-translatio
 sudo python3 deploy/install-translation-model.py "$app/models/opus-tc-big-en-ko-v1"
 sudo install -m 644 newsbot/*.py newsbot/web_index.html "$app/newsbot/"
 sudo install -m 644 "$tmpdir/merged" "$app/sources.toml"
+sudo install -m 644 sources.toml "$app/.sources-shipped.toml"
 sudo install -d -m 755 /etc/systemd/system/newsbot.service.d
 printf '[Service]\nExecStart=\nExecStart=/opt/newsbot/.venv/bin/python -m newsbot run-telegram\n' > "$tmpdir/telegram.conf"
 sudo install -m 644 "$tmpdir/telegram.conf" /etc/systemd/system/newsbot.service.d/telegram.conf
